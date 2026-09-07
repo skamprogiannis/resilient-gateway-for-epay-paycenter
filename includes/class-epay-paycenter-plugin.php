@@ -17,12 +17,9 @@ final class Epay_Paycenter_Plugin {
 
 	/**
 	 * Bootstrap the plugin on plugins_loaded.
-	 *
-	 * Translations are auto-loaded by WordPress core since 4.6 based on
-	 * the plugin slug, so no explicit load_plugin_textdomain() call is
-	 * needed.
 	 */
 	public static function bootstrap(): void {
+		add_action( 'init', array( __CLASS__, 'load_textdomain' ), 0 );
 		if ( ! class_exists( 'WC_Payment_Gateway' ) ) {
 			add_action( 'admin_notices', array( __CLASS__, 'notice_requires_woocommerce' ) );
 			return;
@@ -66,6 +63,17 @@ final class Epay_Paycenter_Plugin {
 
 		// Paid-order recharge notices land on the thank-you page instead.
 		add_action( 'woocommerce_before_thankyou', array( 'Epay_Paycenter_Order_Notices', 'render_thankyou_page' ) );
+	}
+
+	/**
+	 * Register bundled catalogs for installations outside WordPress.org.
+	 */
+	public static function load_textdomain(): void {
+		load_plugin_textdomain(
+			'resilient-gateway-for-epay-paycenter',
+			false,
+			dirname( EPAY_PAYCENTER_PLUGIN_BASENAME ) . '/languages'
+		);
 	}
 
 	/**

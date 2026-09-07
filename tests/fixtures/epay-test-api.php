@@ -16,6 +16,22 @@ function epay_test_test_request_allowed() {
 }
 
 add_filter(
+	'determine_locale',
+	static function ( $locale ) {
+		return epay_test_test_request_allowed() && 'el' === ( $_SERVER['HTTP_X_EPAY_TEST_LOCALE'] ?? '' )
+			? 'el'
+			: $locale;
+	}
+);
+
+function epay_test_locale() {
+	return array(
+		'locale'       => determine_locale(),
+		'not_verified' => __( 'Not verified', 'resilient-gateway-for-epay-paycenter' ),
+	);
+}
+
+add_filter(
 	'epay_paycenter_allowed_callback_ips',
 	static function () {
 		return (array) get_option( 'epay_test_callback_allowed_ips', array() );
@@ -732,6 +748,7 @@ add_action(
 	static function () {
 		$permission = 'epay_test_test_request_allowed';
 		register_rest_route( 'epay-test/v1', '/health', array( 'methods' => 'GET', 'permission_callback' => $permission, 'callback' => 'epay_test_health' ) );
+		register_rest_route( 'epay-test/v1', '/locale', array( 'methods' => 'GET', 'permission_callback' => $permission, 'callback' => 'epay_test_locale' ) );
 		register_rest_route( 'epay-test/v1', '/order/(?P<id>\d+)', array( 'methods' => 'GET', 'permission_callback' => $permission, 'callback' => 'epay_test_read_order' ) );
 		register_rest_route( 'epay-test/v1', '/create-order', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_create_order' ) );
 		register_rest_route( 'epay-test/v1', '/cancel-unpaid/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_cancel_unpaid_order' ) );

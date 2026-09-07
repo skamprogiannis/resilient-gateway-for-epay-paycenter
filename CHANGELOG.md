@@ -27,6 +27,7 @@ Release artifacts and checksums belong in GitHub Releases.
 - Register Checkout Blocks at its payment-registry event so the gateway is
   available regardless of plugin loading order.
 - Require the actual handler response for a successful callback diagnostic.
+- Register bundled translations explicitly, including on WordPress 6.3.
 - Remove unused fallbacks and historical implementation commentary.
 - Document migration from the differently named private package: drain
   in-flight payments, deactivate the old package, activate 2.0.0, verify the

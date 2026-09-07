@@ -159,6 +159,25 @@ test('@smoke downstream and local Paycenter boundary are active', async ({ reque
   });
 });
 
+test('@smoke @locale bundled Greek translations load for the selected request only', async ({ request }) => {
+  const before = await request.get('/wp-json/epay-test/v1/locale');
+  expect(before.ok(), await before.text()).toBeTruthy();
+  const defaultLocale = await before.json();
+
+  const translated = await request.get('/wp-json/epay-test/v1/locale', {
+    headers: { 'X-Epay-Test-Locale': 'el' },
+  });
+  expect(translated.ok(), await translated.text()).toBeTruthy();
+  expect(await translated.json()).toEqual({
+    locale: 'el',
+    not_verified: 'Δεν έχει επαληθευτεί',
+  });
+
+  const after = await request.get('/wp-json/epay-test/v1/locale');
+  expect(after.ok(), await after.text()).toBeTruthy();
+  expect(await after.json()).toEqual(defaultLocale);
+});
+
 test('@smoke gateway is text-only unless a valid custom icon URL is supplied', async ({ request }) => {
   try {
     expect(await setFixture(request, 'gateway-icon', { action: 'clear' })).toEqual({ icon_html: '' });
