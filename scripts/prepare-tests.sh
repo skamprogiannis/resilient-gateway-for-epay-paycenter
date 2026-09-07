@@ -27,7 +27,7 @@ fi
 
 wpcli core update --version=6.8.3 --force
 wpcli core update-db
-wpcli plugin install woocommerce --version=10.4.3 --activate
+wpcli plugin install woocommerce --version=10.4.3 --force --activate
 wpcli plugin activate resilient-gateway-for-epay-paycenter
 wpcli eval-file /qualification-fixtures/setup.php
 wpcli rewrite structure '/%postname%/' --hard
