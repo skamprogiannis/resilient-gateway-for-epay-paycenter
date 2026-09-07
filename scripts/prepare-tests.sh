@@ -20,13 +20,12 @@ for attempt in {1..30}; do
   sleep 2
 done
 
-wpcli core update --version=6.8.3 --force
-
 if ! wpcli core is-installed; then
   wpcli core install --url=http://localhost:8081 --title='ePay qualification' \
     --admin_user=localadmin --admin_password=localadmin123 --admin_email=localadmin@example.test --skip-email
 fi
 
+wpcli core update --version=6.8.3 --force
 wpcli core update-db
 wpcli plugin install woocommerce --version=10.4.3 --activate
 wpcli plugin activate resilient-gateway-for-epay-paycenter
