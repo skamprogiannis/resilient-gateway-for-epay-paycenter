@@ -151,7 +151,7 @@ test('@smoke downstream and local Paycenter boundary are active', async ({ reque
   expect(health).toMatchObject({
     local_only: true,
     fake_epay_available: true,
-    epay_version: '2.0.0',
+    epay_version: process.env.EPAY_TEST_PLUGIN_VERSION || '2.0.1',
     epay_enabled: true,
     epay_mode: 'test',
     epay_password_storage: 'md5-digest',

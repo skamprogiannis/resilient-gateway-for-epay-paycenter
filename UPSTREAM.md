@@ -20,3 +20,7 @@ are documented by their archive checksums; the private development history is
 not redistributed. Maintained work is on `main`. Import future upstream
 releases as separate commits and tags, then run the payment qualification
 suite after integrating their changes.
+
+Maintenance release 2.0.1 (2026-09-07) changes follow-up classification,
+cancellation returns, and staff review handling. The upstream import remains
+unchanged; these fixes belong to the maintained fork.

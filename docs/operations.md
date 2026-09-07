@@ -64,9 +64,17 @@ A result can complete an order only when it has:
 ResultCode `1010` remains inconclusive and is retried. Network, parsing, or
 identity errors never mark an order paid.
 
+FOLLOW_UP `Failure/09` also stays retryable unless the response explicitly
+identifies a card and contains no IRIS fields. A missing payment method is not
+proof of a card decline. Upgrading to 2.0.1 resumes ambiguous attempts that an
+older parser closed. It does not itself change an order's status. Attempts
+already older than 48 hours get one further check and then a review case if
+the bank result remains inconclusive.
+
 While recovery is active, stock for this gateway is reserved for 240 minutes by
 default. The merchant setting accepts 60 to 1440 minutes. Recovery continues
-for up to 48 hours after stock release. If a payment is recovered after an
+until 48 hours after ticket creation, not 48 hours after stock release.
+If a payment is recovered after an
 order became cancelled or failed, verify stock and fulfilment before dispatch.
 
 ## Alerts requiring review
@@ -85,8 +93,23 @@ AdminTool. Never infer settlement from the customer's browser screen. Do not
 fulfil a warning case until amount, currency, final status, transaction ID, and
 reference agree.
 
-The global warning can be hidden for one week, but hiding it does not resolve
-the underlying attempt.
+Reviews appear only on classic/HPOS order lists, order details, and this
+gateway's settings page. Historical attempts first checked after the recovery
+window are collapsed separately. An old date never hides a confirmed payment
+discrepancy.
+
+After checking a case, select **Mark reviewed**. This records the reviewer and
+UTC time without changing the order or deleting bank evidence. Reviewed cases
+remain available in gateway settings. Changing an order to Processing alone
+does not establish that its bank checks were resolved.
+
+## Cancellation returns
+
+An authenticated bank cancellation returns to checkout, not the cancelled
+order's payment link. The notice appears once and advises customers to contact
+the shop before paying again if their bank shows a charge. The current cart is
+left untouched. If browser cookies were lost, the plugin does not reconstruct
+another session's cart or expose its customer details.
 
 ## IRIS pending responses
 
@@ -110,6 +133,14 @@ HashKeys, and likely card numbers are redacted.
 Enable detailed logging only while diagnosing a problem. Export only the
 minimum redacted lines needed for support, apply the site's retention policy,
 and never post transaction data in a public issue.
+
+Follow-up results include reference, channel, result/response code, state,
+transaction ID/time, payment method, and IRIS status. These operational records,
+order notes, and the attempt table cover routine payment monitoring. A separate
+checkout investigation logger can be deactivated after exporting its evidence;
+retain it inactive for future browser, JavaScript, or delivery-widget problems.
+Existing detailed Ticketing logs may contain customer contact/address fields;
+keep them private and apply a retention policy.
 
 ## Legacy Papaki cutover
 

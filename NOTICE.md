@@ -22,6 +22,9 @@ and public-project packaging. See the
 [changelog](https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/blob/main/CHANGELOG.md)
 for a concise history.
 
+On 2026-09-07 the fork contributors corrected ambiguous FOLLOW_UP handling,
+secured single-delivery cancellation notices, and added scoped staff reviews.
+
 ## Trademarks and services
 
 “ePay”, “Paycenter”, and “Piraeus Bank” are trademarks of Piraeus Bank S.A.

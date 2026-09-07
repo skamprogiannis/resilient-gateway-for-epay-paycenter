@@ -5,6 +5,22 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+## 2.0.1 — 2026-09-07
+
+- Keep FOLLOW_UP Failure/09 retryable unless the response explicitly identifies
+  a card decline without IRIS fields. Resume ambiguous checks closed by older
+  versions without changing order status or declaring payment successful.
+- Return authenticated cancellations to checkout with one notice. Preserve the
+  current cart, require the order key to consume notices, and do not promise
+  cart restoration when the browser session is lost.
+- Restrict payment reviews to order screens and gateway settings. Collapse
+  historical checks, explain each exception, retain reviewed cases, and retire
+  checks whose bank/local settlement evidence resolves them.
+- Log bounded per-reference follow-up outcomes without raw bank responses or
+  customer contact fields.
+- Restore missing stock-release timers during reconciliation after a package
+  switch without restarting the stock-reservation clock.
+
 ## 2.0.0
 
 - Adopt the public project name and repository identity while preserving the
