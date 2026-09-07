@@ -1,8 +1,8 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Resilient Gateway for ePay Paycenter 2.0.0\n"
+"Project-Id-Version: Resilient Gateway for ePay Paycenter 2.0.2\n"
 "Report-Msgid-Bugs-To: https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/issues\n"
-"POT-Creation-Date: 2026-09-07T20:39:22+00:00\n"
+"POT-Creation-Date: 2026-09-07T21:00:03+00:00\n"
 "PO-Revision-Date: 2026-09-07 00:00+0000\n"
 "Last-Translator: skamprogiannis\n"
 "Language-Team: Greek\n"
@@ -885,160 +885,160 @@ msgstr "ΕΠΕΙΓΟΝ: το ePay FOLLOW_UP βρήκε %d επιτυχημένα
 msgid "ePay payment was not confirmed within the four-hour stock reservation. Bank follow-up continues for 48 hours."
 msgstr "Η πληρωμή ePay δεν επιβεβαιώθηκε εντός της τετράωρης δέσμευσης αποθέματος. Ο έλεγχος της τράπεζας συνεχίζεται για 48 ώρες."
 
-#: includes/class-epay-paycenter-review.php:180
+#: includes/class-epay-paycenter-review.php:184
 msgid "You cannot review payments."
 msgstr "Δεν έχετε δικαίωμα ελέγχου πληρωμών."
 
-#: includes/class-epay-paycenter-review.php:191
+#: includes/class-epay-paycenter-review.php:195
 msgid "Review could not be saved. Please try again."
 msgstr "Ο έλεγχος δεν αποθηκεύτηκε. Δοκιμάστε ξανά."
 
-#: includes/class-epay-paycenter-review.php:217
+#: includes/class-epay-paycenter-review.php:221
 msgid "Payment review status is unavailable. Ask the site administrator to check the gateway log."
 msgstr "Δεν είναι διαθέσιμη η κατάσταση των ελέγχων πληρωμών. Ζητήστε από τον διαχειριστή του ιστοτόπου να ελέγξει το αρχείο καταγραφής της πύλης."
 
-#: includes/class-epay-paycenter-review.php:237
+#: includes/class-epay-paycenter-review.php:241
 msgid "ePay: payment reviews"
 msgstr "ePay: έλεγχοι πληρωμών"
 
-#: includes/class-epay-paycenter-review.php:240
+#: includes/class-epay-paycenter-review.php:244
 msgid "Payment discrepancies"
 msgstr "Πληρωμές που χρειάζονται έλεγχο"
 
-#: includes/class-epay-paycenter-review.php:241
+#: includes/class-epay-paycenter-review.php:245
 msgid "Check problems"
 msgstr "Τεχνικά προβλήματα ελέγχου"
 
-#: includes/class-epay-paycenter-review.php:242
+#: includes/class-epay-paycenter-review.php:246
 msgid "Unconfirmed attempts"
 msgstr "Μη επιβεβαιωμένες προσπάθειες"
 
-#: includes/class-epay-paycenter-review.php:243
+#: includes/class-epay-paycenter-review.php:247
 msgid "Historical checks"
 msgstr "Παλαιότεροι έλεγχοι"
 
-#: includes/class-epay-paycenter-review.php:244
+#: includes/class-epay-paycenter-review.php:248
 msgid "Reviewed cases"
 msgstr "Ελεγμένες περιπτώσεις"
 
-#: includes/class-epay-paycenter-review.php:247
+#: includes/class-epay-paycenter-review.php:251
 msgid "The bank confirmed payment. Review the discrepancy before fulfilment. Marking a case reviewed does not change the payment or order."
 msgstr "Η τράπεζα επιβεβαίωσε την πληρωμή. Ελέγξτε την εκκρεμότητα πριν την αποστολή. Η σήμανση ως ελεγμένη δεν αλλάζει την πληρωμή ή την παραγγελία."
 
-#: includes/class-epay-paycenter-review.php:248
+#: includes/class-epay-paycenter-review.php:252
 msgid "Ask the site administrator to check the gateway log and resolve these technical problems."
 msgstr "Ζητήστε από τον διαχειριστή του ιστοτόπου να ελέγξει το αρχείο καταγραφής της πύλης και να επιλύσει αυτά τα τεχνικά προβλήματα."
 
-#: includes/class-epay-paycenter-review.php:249
+#: includes/class-epay-paycenter-review.php:253
 msgid "Automatic checks ended without a final bank result. Check these references in AdminTool, then mark each case reviewed. An unconfirmed result does not prove payment or failure."
 msgstr "Οι αυτόματοι έλεγχοι ολοκληρώθηκαν χωρίς τελικό αποτέλεσμα από την τράπεζα. Αναζητήστε αυτούς τους κωδικούς στο AdminTool και σημειώστε κάθε περίπτωση ως ελεγμένη. Η έλλειψη επιβεβαίωσης δεν αποδεικνύει ούτε πληρωμή ούτε αποτυχία."
 
-#: includes/class-epay-paycenter-review.php:250
+#: includes/class-epay-paycenter-review.php:254
 msgid "These attempts were first checked after the recovery window. Review them in AdminTool when reconciling older orders."
 msgstr "Αυτές οι προσπάθειες ελέγχθηκαν πρώτη φορά αφού έληξε το διάστημα αυτόματης ανάκτησης. Ελέγξτε τις στο AdminTool κατά τη συμφωνία παλαιότερων παραγγελιών."
 
-#: includes/class-epay-paycenter-review.php:275
+#: includes/class-epay-paycenter-review.php:279
 msgid "Automatic recovery: Enabled"
 msgstr "Αυτόματη ανάκτηση: Ενεργή"
 
-#: includes/class-epay-paycenter-review.php:275
+#: includes/class-epay-paycenter-review.php:279
 msgid "Automatic recovery: Disabled"
 msgstr "Αυτόματη ανάκτηση: Ανενεργή"
 
-#: includes/class-epay-paycenter-review.php:276
+#: includes/class-epay-paycenter-review.php:280
 msgid "Automatic recovery: Requires verification"
 msgstr "Αυτόματη ανάκτηση: Απαιτείται επαλήθευση"
 
-#: includes/class-epay-paycenter-review.php:279
+#: includes/class-epay-paycenter-review.php:283
 msgid "Pending-check status is unavailable. Ask the site administrator to check the gateway log."
 msgstr "Δεν είναι διαθέσιμη η κατάσταση των προγραμματισμένων ελέγχων. Ζητήστε από τον διαχειριστή του ιστοτόπου να ελέγξει το αρχείο καταγραφής της πύλης."
 
 #. translators: %d: number of payment attempts, not distinct orders.
-#: includes/class-epay-paycenter-review.php:284
+#: includes/class-epay-paycenter-review.php:288
 msgid "Awaiting bank result: %d attempt"
 msgid_plural "Awaiting bank result: %d attempts"
 msgstr[0] "Αναμονή αποτελέσματος τράπεζας: %d προσπάθεια"
 msgstr[1] "Αναμονή αποτελέσματος τράπεζας: %d προσπάθειες"
 
 #. translators: %d: number of unreviewed exceptions, not distinct orders.
-#: includes/class-epay-paycenter-review.php:292
+#: includes/class-epay-paycenter-review.php:296
 msgid "Unreviewed cases: %d"
 msgstr "Εκκρεμείς έλεγχοι: %d"
 
-#: includes/class-epay-paycenter-review.php:293
+#: includes/class-epay-paycenter-review.php:298
 msgid "No unreviewed payment exceptions."
 msgstr "Δεν υπάρχουν εκκρεμείς περιπτώσεις πληρωμών προς έλεγχο."
 
-#: includes/class-epay-paycenter-review.php:296
+#: includes/class-epay-paycenter-review.php:301
 msgid "Automatic checks are not running. Ask the site administrator to review the gateway settings."
 msgstr "Οι αυτόματοι έλεγχοι δεν εκτελούνται. Ζητήστε από τον διαχειριστή του ιστοτόπου να ελέγξει τις ρυθμίσεις της πύλης."
 
-#: includes/class-epay-paycenter-review.php:298
+#: includes/class-epay-paycenter-review.php:303
 msgid "No recovery run is scheduled. Ask the site administrator to check WordPress scheduled tasks."
 msgstr "Δεν έχει προγραμματιστεί εκτέλεση ανάκτησης. Ζητήστε από τον διαχειριστή του ιστοτόπου να ελέγξει τις προγραμματισμένες εργασίες του WordPress."
 
-#: includes/class-epay-paycenter-review.php:300
+#: includes/class-epay-paycenter-review.php:305
 msgid "Automatic checks are more than 15 minutes behind. Ask the site administrator to check WordPress scheduled tasks and the gateway log."
 msgstr "Οι αυτόματοι έλεγχοι καθυστερούν πάνω από 15 λεπτά. Ζητήστε από τον διαχειριστή του ιστοτόπου να ελέγξει τις προγραμματισμένες εργασίες του WordPress και το αρχείο καταγραφής της πύλης."
 
-#: includes/class-epay-paycenter-review.php:305
+#: includes/class-epay-paycenter-review.php:310
 msgid "No run recorded yet."
 msgstr "Δεν έχει καταγραφεί ακόμη εκτέλεση."
 
 #. translators: %s: recovery run completion time in the site's timezone.
-#: includes/class-epay-paycenter-review.php:310
+#: includes/class-epay-paycenter-review.php:315
 msgid "Last recovery run: %s"
 msgstr "Τελευταία εκτέλεση ανάκτησης: %s"
 
-#: includes/class-epay-paycenter-review.php:316
+#: includes/class-epay-paycenter-review.php:321
 msgid "Completed with errors. Ask the site administrator to check the gateway log."
 msgstr "Ολοκληρώθηκε με σφάλματα. Ζητήστε από τον διαχειριστή του ιστοτόπου να ελέγξει το αρχείο καταγραφής της πύλης."
 
-#: includes/class-epay-paycenter-review.php:317
+#: includes/class-epay-paycenter-review.php:322
 msgid "Completed without reported errors."
 msgstr "Ολοκληρώθηκε χωρίς αναφερόμενα σφάλματα."
 
-#: includes/class-epay-paycenter-review.php:410
+#: includes/class-epay-paycenter-review.php:415
 msgid "No final bank result. Check this reference in AdminTool before treating it as paid or unpaid."
 msgstr "Δεν υπάρχει οριστικό αποτέλεσμα από την τράπεζα. Ελέγξτε την αναφορά στο AdminTool πριν θεωρήσετε ότι πληρώθηκε ή όχι."
 
-#: includes/class-epay-paycenter-review.php:411
+#: includes/class-epay-paycenter-review.php:416
 msgid "Bank confirmed payment, but the order is missing or cannot be fulfilled. Account for the payment in AdminTool."
 msgstr "Η τράπεζα επιβεβαίωσε πληρωμή, αλλά η παραγγελία λείπει ή δεν μπορεί να εκτελεστεί. Ελέγξτε την πληρωμή στο AdminTool."
 
-#: includes/class-epay-paycenter-review.php:412
+#: includes/class-epay-paycenter-review.php:417
 msgid "Bank confirmed payment for a trashed order. Review the payment before restoring or refunding the order."
 msgstr "Η τράπεζα επιβεβαίωσε πληρωμή για παραγγελία στον κάδο. Ελέγξτε την πληρωμή πριν επαναφέρετε την παραγγελία ή επιστρέψετε χρήματα."
 
-#: includes/class-epay-paycenter-review.php:413
+#: includes/class-epay-paycenter-review.php:418
 msgid "Payment arrived after stock was released. Confirm stock and fulfilment before dispatch."
 msgstr "Η πληρωμή επιβεβαιώθηκε αφού αποδεσμεύτηκε το απόθεμα. Ελέγξτε τη διαθεσιμότητα και την παραγγελία πριν την αποστολή."
 
-#: includes/class-epay-paycenter-review.php:414
+#: includes/class-epay-paycenter-review.php:419
 msgid "More than one payment was detected. Compare the transactions in AdminTool before arranging a refund."
 msgstr "Εντοπίστηκαν περισσότερες από μία πληρωμές. Συγκρίνετε τις συναλλαγές στο AdminTool πριν προχωρήσετε σε επιστροφή χρημάτων."
 
-#: includes/class-epay-paycenter-review.php:415
+#: includes/class-epay-paycenter-review.php:420
 msgid "Bank confirmed payment, but the order update failed. Check the gateway log and order status."
 msgstr "Η τράπεζα επιβεβαίωσε πληρωμή, αλλά η ενημέρωση της παραγγελίας απέτυχε. Ελέγξτε το αρχείο καταγραφής της πύλης και την κατάσταση της παραγγελίας."
 
-#: includes/class-epay-paycenter-review.php:416
+#: includes/class-epay-paycenter-review.php:421
 msgid "A bank result could not be saved. Check the gateway log and AdminTool."
 msgstr "Δεν αποθηκεύτηκε το αποτέλεσμα της τράπεζας. Ελέγξτε το αρχείο καταγραφής της πύλης και το AdminTool."
 
-#: includes/class-epay-paycenter-review.php:417
+#: includes/class-epay-paycenter-review.php:422
 msgid "The bank check could not finish. Check the gateway log and AdminTool."
 msgstr "Ο τραπεζικός έλεγχος δεν ολοκληρώθηκε. Ελέγξτε το αρχείο καταγραφής της πύλης και το AdminTool."
 
-#: includes/class-epay-paycenter-review.php:429
+#: includes/class-epay-paycenter-review.php:434
 msgid "Review this payment in AdminTool."
 msgstr "Ελέγξτε αυτή την πληρωμή στο AdminTool."
 
-#: includes/class-epay-paycenter-review.php:434
+#: includes/class-epay-paycenter-review.php:439
 msgid "Mark reviewed"
 msgstr "Ολοκλήρωση ελέγχου"
 
-#: includes/class-epay-paycenter-review.php:436
+#: includes/class-epay-paycenter-review.php:441
 msgid "Reviewed (UTC):"
 msgstr "Ελέγχθηκε (UTC):"
 

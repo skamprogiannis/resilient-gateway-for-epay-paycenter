@@ -3,7 +3,7 @@
  * Plugin Name:       Resilient Gateway for ePay Paycenter
  * Plugin URI:        https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter
  * Description:       A resilient WooCommerce gateway for the ePay Paycenter Redirection sale flow.
- * Version:           2.0.1
+ * Version:           2.0.2
  * Requires at least: 6.3
  * Requires PHP:      7.4
  * Tested up to:      7.1
@@ -36,7 +36,7 @@ define( 'EPAY_PAYCENTER_PLUGIN_FILE', __FILE__ );
 define( 'EPAY_PAYCENTER_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'EPAY_PAYCENTER_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'EPAY_PAYCENTER_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
-define( 'EPAY_PAYCENTER_VERSION', '2.0.1' );
+define( 'EPAY_PAYCENTER_VERSION', '2.0.2' );
 define( 'EPAY_PAYCENTER_GATEWAY_ID', 'epay_paycenter' );
 
 require_once EPAY_PAYCENTER_PLUGIN_DIR . 'includes/class-epay-paycenter-plugin.php';

@@ -1,6 +1,6 @@
 {
   "name": "resilient-gateway-for-epay-paycenter",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "description": "Development checks for the browser assets shipped with the WooCommerce gateway.",
   "scripts": {

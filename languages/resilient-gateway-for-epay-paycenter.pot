@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: Resilient Gateway for ePay Paycenter 2.0.1\n"
+"Project-Id-Version: Resilient Gateway for ePay Paycenter 2.0.2\n"
 "Report-Msgid-Bugs-To: https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-07T20:39:22+00:00\n"
+"POT-Creation-Date: 2026-09-07T21:00:03+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.9.0\n"
 "X-Domain: resilient-gateway-for-epay-paycenter\n"
@@ -886,160 +886,160 @@ msgstr ""
 msgid "ePay payment was not confirmed within the four-hour stock reservation. Bank follow-up continues for 48 hours."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:180
+#: includes/class-epay-paycenter-review.php:184
 msgid "You cannot review payments."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:191
+#: includes/class-epay-paycenter-review.php:195
 msgid "Review could not be saved. Please try again."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:217
+#: includes/class-epay-paycenter-review.php:221
 msgid "Payment review status is unavailable. Ask the site administrator to check the gateway log."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:237
+#: includes/class-epay-paycenter-review.php:241
 msgid "ePay: payment reviews"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:240
+#: includes/class-epay-paycenter-review.php:244
 msgid "Payment discrepancies"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:241
+#: includes/class-epay-paycenter-review.php:245
 msgid "Check problems"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:242
+#: includes/class-epay-paycenter-review.php:246
 msgid "Unconfirmed attempts"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:243
+#: includes/class-epay-paycenter-review.php:247
 msgid "Historical checks"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:244
+#: includes/class-epay-paycenter-review.php:248
 msgid "Reviewed cases"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:247
+#: includes/class-epay-paycenter-review.php:251
 msgid "The bank confirmed payment. Review the discrepancy before fulfilment. Marking a case reviewed does not change the payment or order."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:248
+#: includes/class-epay-paycenter-review.php:252
 msgid "Ask the site administrator to check the gateway log and resolve these technical problems."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:249
+#: includes/class-epay-paycenter-review.php:253
 msgid "Automatic checks ended without a final bank result. Check these references in AdminTool, then mark each case reviewed. An unconfirmed result does not prove payment or failure."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:250
+#: includes/class-epay-paycenter-review.php:254
 msgid "These attempts were first checked after the recovery window. Review them in AdminTool when reconciling older orders."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:275
+#: includes/class-epay-paycenter-review.php:279
 msgid "Automatic recovery: Enabled"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:275
+#: includes/class-epay-paycenter-review.php:279
 msgid "Automatic recovery: Disabled"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:276
+#: includes/class-epay-paycenter-review.php:280
 msgid "Automatic recovery: Requires verification"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:279
+#: includes/class-epay-paycenter-review.php:283
 msgid "Pending-check status is unavailable. Ask the site administrator to check the gateway log."
 msgstr ""
 
 #. translators: %d: number of payment attempts, not distinct orders.
-#: includes/class-epay-paycenter-review.php:284
+#: includes/class-epay-paycenter-review.php:288
 msgid "Awaiting bank result: %d attempt"
 msgid_plural "Awaiting bank result: %d attempts"
 msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of unreviewed exceptions, not distinct orders.
-#: includes/class-epay-paycenter-review.php:292
+#: includes/class-epay-paycenter-review.php:296
 msgid "Unreviewed cases: %d"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:293
+#: includes/class-epay-paycenter-review.php:298
 msgid "No unreviewed payment exceptions."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:296
+#: includes/class-epay-paycenter-review.php:301
 msgid "Automatic checks are not running. Ask the site administrator to review the gateway settings."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:298
+#: includes/class-epay-paycenter-review.php:303
 msgid "No recovery run is scheduled. Ask the site administrator to check WordPress scheduled tasks."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:300
+#: includes/class-epay-paycenter-review.php:305
 msgid "Automatic checks are more than 15 minutes behind. Ask the site administrator to check WordPress scheduled tasks and the gateway log."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:305
+#: includes/class-epay-paycenter-review.php:310
 msgid "No run recorded yet."
 msgstr ""
 
 #. translators: %s: recovery run completion time in the site's timezone.
-#: includes/class-epay-paycenter-review.php:310
+#: includes/class-epay-paycenter-review.php:315
 msgid "Last recovery run: %s"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:316
+#: includes/class-epay-paycenter-review.php:321
 msgid "Completed with errors. Ask the site administrator to check the gateway log."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:317
+#: includes/class-epay-paycenter-review.php:322
 msgid "Completed without reported errors."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:410
+#: includes/class-epay-paycenter-review.php:415
 msgid "No final bank result. Check this reference in AdminTool before treating it as paid or unpaid."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:411
+#: includes/class-epay-paycenter-review.php:416
 msgid "Bank confirmed payment, but the order is missing or cannot be fulfilled. Account for the payment in AdminTool."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:412
+#: includes/class-epay-paycenter-review.php:417
 msgid "Bank confirmed payment for a trashed order. Review the payment before restoring or refunding the order."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:413
+#: includes/class-epay-paycenter-review.php:418
 msgid "Payment arrived after stock was released. Confirm stock and fulfilment before dispatch."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:414
+#: includes/class-epay-paycenter-review.php:419
 msgid "More than one payment was detected. Compare the transactions in AdminTool before arranging a refund."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:415
+#: includes/class-epay-paycenter-review.php:420
 msgid "Bank confirmed payment, but the order update failed. Check the gateway log and order status."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:416
+#: includes/class-epay-paycenter-review.php:421
 msgid "A bank result could not be saved. Check the gateway log and AdminTool."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:417
+#: includes/class-epay-paycenter-review.php:422
 msgid "The bank check could not finish. Check the gateway log and AdminTool."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:429
+#: includes/class-epay-paycenter-review.php:434
 msgid "Review this payment in AdminTool."
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:434
+#: includes/class-epay-paycenter-review.php:439
 msgid "Mark reviewed"
 msgstr ""
 
-#: includes/class-epay-paycenter-review.php:436
+#: includes/class-epay-paycenter-review.php:441
 msgid "Reviewed (UTC):"
 msgstr ""
 

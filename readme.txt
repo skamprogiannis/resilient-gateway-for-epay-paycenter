@@ -4,7 +4,7 @@ Tags: woocommerce, payment gateway, epay, iris, greece
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.0.1
+Stable tag: 2.0.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -245,6 +245,12 @@ Do not open a public issue. Use GitHub private vulnerability reporting:
 https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/advisories/new
 
 == Changelog ==
+
+= 2.0.2 =
+* Separate payment discrepancies, technical problems, and unconfirmed attempts; retain Historical checks and review acknowledgements.
+* Show queued attempts and recovery-run status without treating an empty review queue as proof of payment verification.
+* Report delayed, unscheduled, or unreadable checks, with responsive English/Greek controls on order and gateway screens.
+* Preserve payment decisions, retry timings, stock handling, credentials, and callback URLs.
 
 = 2.0.1 =
 * Keep ambiguous FOLLOW_UP Failure/09 responses retryable and resume checks closed by older versions.

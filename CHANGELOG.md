@@ -5,6 +5,8 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+## 2.0.2 — 2026-09-08
+
 - Separate confirmed payment discrepancies, technical check problems, and
   unconfirmed attempts in the staff panel. Keep Historical checks collapsed
   and preserve existing review acknowledgements.
