@@ -60,6 +60,7 @@ final class Epay_Paycenter_Plugin {
 		// Drain order-scoped callback notices before WooCommerce prints its
 		// pay-page notice stack at the default priority 10.
 		add_action( 'before_woocommerce_pay', array( 'Epay_Paycenter_Order_Notices', 'render_payment_page' ), 5 );
+		add_action( 'template_redirect', array( 'Epay_Paycenter_Order_Notices', 'checkout_return' ), 5 );
 
 		// Paid-order recharge notices land on the thank-you page instead.
 		add_action( 'woocommerce_before_thankyou', array( 'Epay_Paycenter_Order_Notices', 'render_thankyou_page' ) );

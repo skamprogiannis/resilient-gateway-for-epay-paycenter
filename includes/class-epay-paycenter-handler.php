@@ -328,26 +328,8 @@ class Epay_Paycenter_Handler {
 				);
 			}
 
-			// Surface the decline message via two redundant channels
-			// because the Paycenter callback is a cross-origin POST
-			// from the bank page: on SameSite=Lax browsers the
-			// existing WooCommerce session cookie is stripped, so a
-			// plain `wc_add_notice()` call here can land in an
-			// orphan session that the customer's subsequent GET to
-			// the pay-for-order URL never sees.
-			// 1. Legacy session-bound notice (may or may not make
-			// it through, depending on browser / host cookie
-			// behaviour).
-			// 2. Order-scoped transient drained by
-			// `Epay_Paycenter_Order_Notices::render_payment_page()`
-			// during the next render of this order's
-			// pay-for-order page - session-independent, which
-			// is what Redirection Manual v2.9 §5 "Display of
-			// transaction decline message received from Issuer
-			// on the user page" effectively requires.
-			// `render_payment_page()` de-duplicates so the
-			// customer never sees the same line twice.
-			wc_add_notice( $messages['user_notice'], $notice_type );
+			// The browser's session may be absent on the cross-origin bank POST.
+			// Deliver once, on the subsequent order-key-authenticated GET.
 			Epay_Paycenter_Order_Notices::queue( $order_id, $messages['user_notice'], $notice_type );
 
 			// Explicit "handler ran to completion" marker. If this line
@@ -704,15 +686,9 @@ class Epay_Paycenter_Handler {
 			$order->save();
 		}
 
-		// See the decline branch in handle_response() for the rationale:
-		// the cancel link is also followed from the cross-origin bank
-		// page, so the session-bound notice alone is not reliable.
-		// Queue the same text via the order-scoped transient so the
-		// pay-for-order page can re-surface it on the next render.
-		$cancel_notice = __( 'Payment was cancelled. Your cart is preserved if you wish to try again.', 'resilient-gateway-for-epay-paycenter' );
-		wc_add_notice( $cancel_notice, 'notice' );
+		$cancel_notice = __( 'You cancelled the payment process. If your bank shows a charge, contact us before paying again.', 'resilient-gateway-for-epay-paycenter' );
 		Epay_Paycenter_Order_Notices::queue( $order_id, $cancel_notice, 'notice' );
-		wp_safe_redirect( $order->get_checkout_payment_url() );
+		wp_safe_redirect( Epay_Paycenter_Order_Notices::checkout_return_url( $order ) );
 		exit;
 	}
 

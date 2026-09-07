@@ -608,6 +608,60 @@ test('@callback canonical and legacy cancel require the issued one-time token', 
   expect(rejectedAttempt.ParamBackLink).toContain('epp_action=cancel');
 });
 
+for (const layout of ['classic', 'blocks']) {
+  for (const lostSession of [false, true]) {
+    test(`@callback @cancel-return ${layout} cancellation returns once to a usable cart, lost session ${lostSession}`, async ({ page, request, context }) => {
+      const fixture = await setFixture(request, 'checkout-layout', { layout });
+      try {
+        await page.goto(fixture.add_to_cart_url);
+        const order = await createOrder(request);
+        const attempt = await issueAttempt(request, order);
+        const backlink = new URLSearchParams(attempt.ParamBackLink);
+        const response = await sendCallback(page.request, LEGACY_CALLBACK, {
+          peiraeus: 'cancel', order_id: String(order.order_id), token: backlink.get('token'),
+        });
+        expect(response.status()).toBe(302);
+        const forgedReturn = new URL(response.headers().location);
+        forgedReturn.searchParams.set('key', 'not-the-order-key');
+        const forged = await request.get(forgedReturn.href);
+        expect(await forged.text()).not.toContain('You cancelled the payment process.');
+        if (lostSession) await context.clearCookies();
+        await page.goto(response.headers().location);
+        expect(page.url()).not.toContain('order-pay');
+        await expect(page.getByText(/You cancelled the payment process\./)).toHaveCount(1);
+        await expect(page.getByText(/it cannot be paid for/i)).toHaveCount(0);
+        await expect(page.getByText(/If your bank shows a charge, contact us before paying again\./)).toBeVisible();
+        if (!lostSession) {
+          await expect(page.locator(layout === 'classic' ? 'form.checkout' : '.wp-block-woocommerce-checkout')).toBeVisible();
+        }
+        if (process.env.EPAY_TEST_CAPTURE_UI) await page.screenshot({ path: test.info().outputPath('cancel-return.png'), fullPage: true });
+        await page.reload();
+        await expect(page.getByText(/You cancelled the payment process\./)).toHaveCount(0);
+        expect((await readOrder(request, order.order_id)).status).toBe('cancelled');
+      } finally {
+        await setFixture(request, 'checkout-layout', { layout: 'restore' });
+      }
+    });
+  }
+}
+
+test('@locale Greek cancellation guidance is delivered once', async ({ page, request }) => {
+  const fixture = await setFixture(request, 'checkout-layout', { layout: 'classic' });
+  try {
+    await page.goto(fixture.add_to_cart_url);
+    const order = await createOrder(request);
+    const attempt = await issueAttempt(request, order);
+    const response = await page.request.post(LEGACY_CALLBACK, {
+      form: { peiraeus: 'cancel', order_id: String(order.order_id), token: new URLSearchParams(attempt.ParamBackLink).get('token') },
+      headers: { 'X-Epay-Test-Locale': 'el' }, maxRedirects: 0,
+    });
+    await page.goto(response.headers().location);
+    await expect(page.getByText('Ακυρώσατε τη διαδικασία πληρωμής. Αν βλέπετε χρέωση στην τράπεζά σας, επικοινωνήστε μαζί μας πριν πληρώσετε ξανά.', { exact: true })).toHaveCount(1);
+  } finally {
+    await setFixture(request, 'checkout-layout', { layout: 'restore' });
+  }
+});
+
 test('@callback cancelling an earlier attempt expires its remaining siblings', async ({ request }) => {
   const order = await createOrder(request);
   const earlier = await issueAttempt(request, order);
