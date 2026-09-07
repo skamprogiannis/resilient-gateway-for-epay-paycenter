@@ -199,8 +199,12 @@ MerchantReference in the ePay AdminTool.
 After an administrator verifies and enables `FOLLOW_UP`, the plugin performs
 bounded checks for up to 48 hours. Only an exact approved bank result calls
 WooCommerce's normal `payment_complete()` path. Late, detached, unresolved,
-locally unpersisted, or possibly duplicated payments produce an administrator
-warning for manual review.
+locally unpersisted, or possibly duplicated payments produce a review case.
+The order-screen panel separates confirmed payment discrepancies, technical
+check problems, unconfirmed attempts, and Historical checks. It also shows
+queued attempts and the last recovery run. An empty review queue is not proof
+that all payments were checked. Mark reviewed records acknowledgement without
+changing payment or order data.
 
 = How long is stock reserved? =
 

@@ -22,6 +22,7 @@ delete_option( 'epay_paycenter_ambiguous_09_repaired' );
 delete_option( 'epay_paycenter_reconcile_report' );
 delete_option( 'epay_paycenter_follow_up_verification' );
 delete_option( 'epay_paycenter_follow_up_active' );
+delete_option( 'epay_paycenter_recovery_status' );
 
 // Active "credentials rejected by the bank" alert (ResultCode 100).
 delete_option( 'epay_paycenter_credentials_alert' );

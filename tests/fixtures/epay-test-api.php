@@ -31,6 +31,37 @@ function epay_test_locale() {
 	);
 }
 
+/** Request-scoped infrastructure faults; no production transport or data is used. */
+function epay_test_recovery_scenario() {
+	return epay_test_test_request_allowed() ? ( $_SERVER['HTTP_X_EPAY_TEST_RECOVERY_SCENARIO'] ?? '' ) : '';
+}
+
+add_filter( 'query', static function ( $sql ) {
+	$scenario = epay_test_recovery_scenario();
+	$queue = 'queue-error' === $scenario && false !== strpos( $sql, 'COALESCE(SUM(follow_up_state' );
+	$report = 'report-error' === $scenario && false !== strpos( $sql, 'SELECT option_value' ) && false !== strpos( $sql, 'epay_paycenter_reconcile_report' );
+	$worker = 'worker-status-error' === $scenario && false !== strpos( $sql, 'SELECT option_value' ) && false !== strpos( $sql, 'epay_paycenter_recovery_status' );
+	$attempt = 'attempt-error' === $scenario && false !== strpos( $sql, 'SELECT * FROM' ) && false !== strpos( $sql, 'epay_paycenter_tickets' );
+	if ( $queue || $report || $worker || $attempt ) {
+		return 'SELECT * FROM epay_test_unavailable_status';
+	}
+	return $sql;
+} );
+add_filter( 'pre_option_cron', static function ( $value ) {
+	return 'missing-schedule' === epay_test_recovery_scenario() ? array( 'version' => 2 ) : $value;
+} );
+add_filter( 'pre_schedule_event', static function ( $value ) {
+	return 'missing-schedule' === epay_test_recovery_scenario() ? false : $value;
+} );
+add_filter( 'option_woocommerce_epay_paycenter_settings', static function ( $settings ) {
+	if ( 'disabled' === epay_test_recovery_scenario() ) {
+		$settings['follow_up_enabled'] = 'no';
+	} elseif ( 'changed-credentials' === epay_test_recovery_scenario() ) {
+		$settings['pos_id'] = '99999998';
+	}
+	return $settings;
+} );
+
 add_filter(
 	'epay_paycenter_allowed_callback_ips',
 	static function () {
@@ -338,6 +369,7 @@ function epay_test_set_fake_follow_up( $request ) {
 
 function epay_test_reset_follow_up() {
 	delete_option( 'epay_paycenter_reconcile_report' );
+	delete_option( 'epay_paycenter_recovery_status' );
 	delete_transient( 'epay_paycenter_reconcile_dismissed' );
 	$settings                      = (array) get_option( 'woocommerce_epay_paycenter_settings', array() );
 	$settings['follow_up_enabled'] = 'no';
@@ -479,6 +511,19 @@ function epay_test_run_follow_up_worker() {
 		return new WP_Error( 'epay_test_follow_up_unavailable', 'Follow-up implementation is unavailable.', array( 'status' => 501 ) );
 	}
 	return array( 'result' => Epay_Paycenter_Reconciliation::run() );
+}
+
+/** Keep each worker-status scenario independent of earlier synthetic orders. */
+function epay_test_isolate_follow_up_queue( $request ) {
+	global $wpdb;
+	$ids = array_map( 'absint', (array) $request->get_param( 'order_ids' ) );
+	$ids[] = 0;
+	$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+	$wpdb->query( $wpdb->prepare(
+		"UPDATE %i SET next_check_at = NULL WHERE resolved_at IS NULL AND order_id NOT IN ($placeholders)",
+		array_merge( array( $wpdb->prefix . 'epay_paycenter_tickets' ), $ids )
+	) );
+	return array( 'isolated' => '' === $wpdb->last_error );
 }
 
 /** Seed only synthetic rows in the state written by the previous parser. */
@@ -800,6 +845,7 @@ add_action(
 		register_rest_route( 'epay-test/v1', '/follow-up/run/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_run_follow_up' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/persist-paid-sibling/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_persist_paid_sibling' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/worker', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_run_follow_up_worker' ) );
+		register_rest_route( 'epay-test/v1', '/follow-up/isolate-queue', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_isolate_follow_up_queue' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/prioritise/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_prioritise_follow_up' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/seed-closed-09/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_seed_closed_09' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/age-attempt/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_age_attempt' ) );

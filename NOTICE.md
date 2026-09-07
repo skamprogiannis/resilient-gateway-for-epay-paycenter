@@ -24,6 +24,8 @@ for a concise history.
 
 On 2026-09-07 the fork contributors corrected ambiguous FOLLOW_UP handling,
 secured single-delivery cancellation notices, and added scoped staff reviews.
+The staff review update separates payment discrepancies from unconfirmed
+attempts and adds credential-bound recovery-run status and Greek labels.
 
 ## Trademarks and services
 

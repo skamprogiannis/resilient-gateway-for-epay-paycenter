@@ -94,14 +94,55 @@ fulfil a warning case until amount, currency, final status, transaction ID, and
 reference agree.
 
 Reviews appear only on classic/HPOS order lists, order details, and this
-gateway's settings page. Historical attempts first checked after the recovery
-window are collapsed separately. An old date never hides a confirmed payment
-discrepancy.
+gateway's settings page:
+
+- **Payment discrepancies:** the bank confirmed payment but fulfilment or
+  accounting needs review, including payments for deleted orders. Expanded.
+- **Check problems:** a technical failure needs the site administrator's
+  attention. Expanded; it is not itself proof of payment or failure.
+- **Unconfirmed attempts:** automatic checks ended without a final result.
+  Collapsed; check each MerchantReference in AdminTool before acknowledging it.
+- **Historical checks:** unresolved attempts first checked after the 48-hour
+  recovery window. The label and classification are unchanged. Normally
+  monitored attempts do not move here merely because they become older.
+
+An old date never hides a confirmed payment discrepancy. Final declined
+attempts do not need routine manual review unless other evidence, such as a
+customer charge report, conflicts with that result.
+
+The summary counts queued payment attempts awaiting a bank result and
+unreviewed cases, not distinct orders. One order can have several of either.
+**No unreviewed payment exceptions** means only that the stored review queue is
+empty; checks may still be pending, disabled, delayed, or unavailable.
+
+**Last recovery run** records a completed worker batch, including empty
+batches. It does not prove successful bank contact or final payment. Channel
+verification and viewing the panel do not update it. The history is tied to
+the current credentials/environment, so upgrading or changing credentials
+can show **No run recorded yet** until a worker completes.
+
+Enabled recovery flags work overdue by more than 15 minutes and a missing
+scheduled worker. For either warning, inspect WordPress scheduled tasks and
+the `epay-paycenter` log. A database-read failure displays unavailable status,
+not a zero count.
 
 After checking a case, select **Mark reviewed**. This records the reviewer and
 UTC time without changing the order or deleting bank evidence. Reviewed cases
 remain available in gateway settings. Changing an order to Processing alone
 does not establish that its bank checks were resolved.
+
+### Updating from 2.0.1 to 2.0.2
+
+Back up the site, then upload the versioned plugin ZIP through WordPress and
+choose to replace the installed public plugin. Do not delete or uninstall it
+first. Existing credentials, verification, automatic-recovery settings and
+review acknowledgements are retained; no new verification is required when
+credentials are unchanged.
+
+Check that recovery is still enabled and that the groups appear on Orders,
+not the Dashboard. The first completed worker run populates its timestamp.
+No order-status corrections or changes to bank callback URLs are required by
+this update.
 
 ## Cancellation returns
 

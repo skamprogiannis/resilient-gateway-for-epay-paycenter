@@ -1,0 +1,49 @@
+/* Native WordPress review controls, scoped to order and gateway screens. */
+.epay-paycenter-review {
+	overflow-wrap: anywhere;
+}
+
+.epay-review-overview {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 24px;
+}
+
+.epay-review-overview > p {
+	margin: 0;
+}
+
+.epay-paycenter-review details {
+	border-top: 1px solid #dcdcde;
+	margin-top: 8px;
+}
+
+.epay-paycenter-review summary {
+	cursor: pointer;
+	font-weight: 600;
+	padding: 8px 0;
+}
+
+.epay-paycenter-review summary:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 2px;
+}
+
+.epay-paycenter-review li {
+	margin-bottom: 16px;
+}
+
+@media (max-width: 782px) {
+	.epay-review-overview {
+		display: block;
+	}
+
+	.epay-review-overview > p {
+		margin: 4px 0;
+	}
+
+	.epay-paycenter-review summary {
+		min-height: 44px;
+		box-sizing: border-box;
+	}
+}

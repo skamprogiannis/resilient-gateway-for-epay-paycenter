@@ -5,6 +5,15 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Separate confirmed payment discrepancies, technical check problems, and
+  unconfirmed attempts in the staff panel. Keep Historical checks collapsed
+  and preserve existing review acknowledgements.
+- Show queued attempts, unreviewed case counts, and credential-bound recovery
+  run status. Surface overdue work, missing scheduling, and unavailable data
+  without implying that an empty review queue proves every payment was checked.
+- Batch attempt-status lookups and include responsive English/Greek controls.
+  Payment decisions, retry checkpoints, and stock reservations are unchanged.
+
 ## 2.0.1 — 2026-09-07
 
 - Keep FOLLOW_UP Failure/09 retryable unless the response explicitly identifies

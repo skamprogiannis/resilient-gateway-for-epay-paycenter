@@ -16,6 +16,7 @@ defined( 'ABSPATH' ) || exit;
  * @phpstan-type RunSummary array{paid:int, declined:int, pending:int, query_errors:int, local_paid:int, unresolved:int, double_payments:int, settlement_errors:int, lock_skipped:int}
  * @phpstan-type TicketRow array{id:int, order_id:int, merchant_reference:string, created_at:string, follow_up_attempts:int, follow_up_state:string, follow_up_result_code:string, follow_up_response_code:string, follow_up_status_flag:string, follow_up_support_reference_id:string, follow_up_transaction_id:string, follow_up_transaction_at:string, follow_up_payment_method:string, follow_up_iris_transaction_id:string, follow_up_iris_status:string}
  * @phpstan-type ChannelTestResult array{success:bool, message:string, channel?:string, status_label?:string, tested_channels?:list<string>, response_code?:string, payment_method?:string, transaction_at?:string}
+ * @phpstan-type RecoveryStatus array{enabled:bool, verified:bool, awaiting:int|null, overdue:bool, scheduled:bool, last_run:array{completed_at:int, errors:int}|null}
  */
 final class Epay_Paycenter_Reconciliation {
 
@@ -23,6 +24,7 @@ final class Epay_Paycenter_Reconciliation {
 	const STOCK_RELEASE_HOOK     = 'epay_paycenter_release_stock';
 	const VERIFICATION_OPTION    = 'epay_paycenter_follow_up_verification';
 	const ACTIVE_OPTION          = 'epay_paycenter_follow_up_active';
+	const STATUS_OPTION          = 'epay_paycenter_recovery_status';
 	const REPORT_OPTION          = 'epay_paycenter_reconcile_report';
 	const DISMISS_TRANSIENT      = 'epay_paycenter_reconcile_dismissed';
 	const LOCK_PREFIX            = 'epay_paycenter_follow_up_lock_';
@@ -47,7 +49,7 @@ final class Epay_Paycenter_Reconciliation {
 			}
 		);
 		add_action( self::STOCK_RELEASE_HOOK, array( __CLASS__, 'release_stock' ) );
-		Epay_Paycenter_Review::init();
+		Epay_Paycenter_Review::init( array( __CLASS__, 'status' ) );
 		add_action( 'wp_ajax_epay_paycenter_follow_up_test', array( __CLASS__, 'ajax_test_channel' ) );
 		add_action(
 			'woocommerce_update_options_payment_gateways_' . EPAY_PAYCENTER_GATEWAY_ID,
@@ -362,6 +364,8 @@ final class Epay_Paycenter_Reconciliation {
 			return $summary;
 		}
 
+		$fingerprint        = self::credential_fingerprint();
+		$maintenance_errors = 0;
 		global $wpdb;
 		$table  = $wpdb->prefix . 'epay_paycenter_tickets';
 		$batch  = max( 1, min( 100, (int) apply_filters( 'epay_paycenter_reconcile_batch_size', self::DEFAULT_BATCH_SIZE ) ) );
@@ -380,7 +384,7 @@ final class Epay_Paycenter_Reconciliation {
 					$batch
 				)
 			);
-			if ( ! is_array( $order_ids ) ) {
+			if ( '' !== $wpdb->last_error || ! is_array( $order_ids ) ) {
 				throw new RuntimeException( 'Could not load due reconciliation orders.' );
 			}
 
@@ -412,12 +416,72 @@ final class Epay_Paycenter_Reconciliation {
 			try {
 				self::prune();
 			} catch ( Throwable $error ) {
+				++$maintenance_errors;
 				Epay_Paycenter_Logger::error( 'Could not prune old ePay reconciliation records.' );
 			}
-			self::schedule();
+			if ( ! self::schedule() ) {
+				++$maintenance_errors;
+			}
+		}
+		$status = array(
+			'fingerprint'  => $fingerprint,
+			'completed_at' => time(),
+			'errors'       => $summary['query_errors'] + $summary['settlement_errors'] + $maintenance_errors,
+		);
+		if ( ! update_option( self::STATUS_OPTION, $status, false ) && get_option( self::STATUS_OPTION ) !== $status ) {
+			Epay_Paycenter_Logger::error( 'Could not save the ePay recovery worker status.' );
 		}
 		Epay_Paycenter_Logger::info( 'Paycenter follow-up reconciliation run complete', $summary );
 		return $summary;
+	}
+
+	/**
+	 * Read queue health without querying the bank or scheduling work.
+	 *
+	 * @phpstan-return RecoveryStatus
+	 * @throws RuntimeException If worker history cannot be read.
+	 */
+	public static function status(): array {
+		global $wpdb;
+		$status = array(
+			'enabled'   => self::is_enabled(),
+			'verified'  => '' !== self::verified_channel(),
+			'awaiting'  => null,
+			'overdue'   => false,
+			'scheduled' => false !== wp_next_scheduled( self::CRON_HOOK ),
+			'last_run'  => null,
+		);
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT COALESCE(SUM(follow_up_state IN ('','pending','query_error')),0) AS awaiting, MIN(next_check_at) AS due_at
+			 FROM %i WHERE resolved_at IS NULL AND next_check_at IS NOT NULL",
+				$wpdb->prefix . 'epay_paycenter_tickets'
+			),
+			ARRAY_A
+		);
+		if ( '' === $wpdb->last_error && is_array( $row ) ) {
+			$status['awaiting'] = (int) $row['awaiting'];
+			$due                = $row['due_at'] ? strtotime( (string) $row['due_at'] . ' UTC' ) : false;
+			$status['overdue']  = false !== $due && $due < time() - 15 * MINUTE_IN_SECONDS;
+		} else {
+			Epay_Paycenter_Logger::error( 'Could not read the ePay pending-check status.' );
+		}
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$raw = $wpdb->get_var( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, self::STATUS_OPTION ) );
+		if ( '' !== $wpdb->last_error ) {
+			throw new RuntimeException( 'Could not read the ePay worker history.' );
+		}
+		$stored = null === $raw ? false : maybe_unserialize( $raw );
+		if ( is_array( $stored ) && isset( $stored['fingerprint'], $stored['completed_at'], $stored['errors'] )
+			&& is_string( $stored['fingerprint'] ) && is_int( $stored['completed_at'] ) && is_int( $stored['errors'] )
+			&& hash_equals( self::credential_fingerprint(), $stored['fingerprint'] ) ) {
+			$status['last_run'] = array(
+				'completed_at' => $stored['completed_at'],
+				'errors'       => $stored['errors'],
+			);
+		}
+		return $status;
 	}
 
 	/**
@@ -1034,7 +1098,7 @@ final class Epay_Paycenter_Reconciliation {
 		}
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- Both query branches prepare every identifier and value; the queue must be read fresh.
 		$rows = $wpdb->get_results( $sql, ARRAY_A );
-		if ( ! is_array( $rows ) ) {
+		if ( '' !== $wpdb->last_error || ! is_array( $rows ) ) {
 			throw new RuntimeException( 'Could not load ePay reconciliation attempts.' );
 		}
 		return array_map( array( __CLASS__, 'normalise_row' ), array_values( $rows ) );

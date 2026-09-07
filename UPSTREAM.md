@@ -24,3 +24,7 @@ suite after integrating their changes.
 Maintenance release 2.0.1 (2026-09-07) changes follow-up classification,
 cancellation returns, and staff review handling. The upstream import remains
 unchanged; these fixes belong to the maintained fork.
+
+The 2026-09-07 staff review update adds grouped exceptions and a read-only
+recovery-status summary. These are maintained-fork changes; the upstream
+payment protocol and import remain unchanged.

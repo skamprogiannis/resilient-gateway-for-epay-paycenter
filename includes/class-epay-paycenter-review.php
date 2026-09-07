@@ -12,14 +12,52 @@ defined( 'ABSPATH' ) || exit;
  * Records exceptions and acknowledges human review without altering payments.
  *
  * @phpstan-type ReviewItem array{type:string, order_id:int, reference:string, historical:bool, reviewed_at:string, reviewed_by:int}
+ * @phpstan-type ReviewTicket array{follow_up_state:string, follow_up_attempts:int, created_at:string, last_checked_at:string}
+ * @phpstan-import-type RecoveryStatus from Epay_Paycenter_Reconciliation
  */
 final class Epay_Paycenter_Review {
 	const REPORT_OPTION = 'epay_paycenter_reconcile_report';
 
-	/** Register only administrative presentation and acknowledgement hooks. */
-	public static function init(): void {
-		add_action( 'admin_notices', array( __CLASS__, 'render' ) );
+	/**
+	 * Register administrative hooks with a read-only recovery status provider.
+	 *
+	 * @param callable $read_status Recovery status provider.
+	 * @phpstan-param callable():RecoveryStatus $read_status
+	 */
+	public static function init( callable $read_status ): void {
+		add_action(
+			'admin_notices',
+			static function () use ( $read_status ): void {
+				self::render( $read_status );
+			}
+		);
 		add_action( 'admin_post_epay_paycenter_review', array( __CLASS__, 'acknowledge' ) );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
+	}
+
+	/** Load presentation styles only where employees can review payments. */
+	public static function enqueue_assets(): void {
+		if ( 'none' !== self::screen_context() ) {
+			wp_enqueue_style( 'epay-paycenter-review', EPAY_PAYCENTER_PLUGIN_URL . 'assets/css/epay-paycenter-review.css', array(), EPAY_PAYCENTER_VERSION );
+		}
+	}
+
+	/**
+	 * Restrict both the panel and its assets to staff order-management screens.
+	 *
+	 * @return 'none'|'settings'|'orders'
+	 */
+	private static function screen_context(): string {
+		$screen = get_current_screen();
+		if ( ! $screen || ! current_user_can( 'manage_woocommerce' ) ) {
+			return 'none';
+		}
+		// Read-only screen selection; no settings change occurs here.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( 'woocommerce_page_wc-settings' === $screen->id && isset( $_GET['section'] ) && EPAY_PAYCENTER_GATEWAY_ID === $_GET['section'] ) {
+			return 'settings';
+		}
+		return in_array( $screen->id, array( 'edit-shop_order', 'shop_order', 'woocommerce_page_wc-orders' ), true ) ? 'orders' : 'none';
 	}
 
 	/**
@@ -111,9 +149,17 @@ final class Epay_Paycenter_Review {
 	 * Read both the original report and the acknowledged review format.
 	 *
 	 * @return array<string,ReviewItem>
+	 * @throws RuntimeException If the report cannot be read reliably.
 	 */
 	private static function items(): array {
-		$report = get_option( self::REPORT_OPTION );
+		global $wpdb;
+		// A failed options read must not masquerade as an empty review queue.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$stored = $wpdb->get_var( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, self::REPORT_OPTION ) );
+		if ( '' !== $wpdb->last_error ) {
+			throw new RuntimeException( 'Could not read the payment review report.' );
+		}
+		$report = null === $stored ? false : maybe_unserialize( $stored );
 		$items  = is_array( $report ) && isset( $report['items'] ) && is_array( $report['items'] ) ? $report['items'] : array();
 		$result = array();
 		foreach ( $items as $key => $item ) {
@@ -154,71 +200,150 @@ final class Epay_Paycenter_Review {
 		exit;
 	}
 
-	/** Render a compact, screen-scoped queue using native WordPress controls. */
-	public static function render(): void {
-		$screen = get_current_screen();
-		if ( ! $screen || ! current_user_can( 'manage_woocommerce' ) ) {
+	/**
+	 * Render a compact, screen-scoped queue using native WordPress controls.
+	 *
+	 * @param callable $read_status Recovery status provider.
+	 * @phpstan-param callable():RecoveryStatus $read_status
+	 */
+	public static function render( callable $read_status ): void {
+		$context = self::screen_context();
+		if ( 'none' === $context ) {
 			return;
 		}
-		// Read-only screen selection; no settings change occurs here.
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$settings = 'woocommerce_page_wc-settings' === $screen->id && isset( $_GET['section'] ) && EPAY_PAYCENTER_GATEWAY_ID === $_GET['section'];
-		if ( ! $settings && ! in_array( $screen->id, array( 'edit-shop_order', 'shop_order', 'woocommerce_page_wc-orders' ), true ) ) {
+		$settings = 'settings' === $context;
+		$groups   = array_fill_keys( array( 'payments', 'problems', 'unconfirmed', 'historical', 'reviewed' ), array() );
+		try {
+			$items   = self::items();
+			$tickets = self::tickets( $items );
+			$status  = $read_status();
+		} catch ( RuntimeException $error ) {
+			echo '<div class="notice notice-warning epay-paycenter-review"><p>' . esc_html__( 'Payment review status is unavailable. Ask the site administrator to check the gateway log.', 'resilient-gateway-for-epay-paycenter' ) . '</p></div>';
+			Epay_Paycenter_Logger::error( 'Could not read payment review status.' );
 			return;
 		}
-		$groups = array(
-			'active'     => array(),
-			'historical' => array(),
-			'reviewed'   => array(),
-		);
-		foreach ( self::items() as $key => $item ) {
-			$group = self::group( $item );
+		$orders = array();
+		foreach ( $items as $key => $item ) {
+			$order_id = $item['order_id'];
+			if ( ! array_key_exists( $order_id, $orders ) ) {
+				$order               = wc_get_order( $order_id );
+				$orders[ $order_id ] = $order instanceof WC_Order ? $order : null;
+			}
+			$group = self::group( $item, $tickets[ $order_id ][ $item['reference'] ] ?? null, $orders[ $order_id ] );
 			if ( 'resolved' !== $group ) {
 				$groups[ $group ][ $key ] = $item;
 			}
 		}
-		if ( empty( $groups['active'] ) && empty( $groups['historical'] ) && ( ! $settings || empty( $groups['reviewed'] ) ) ) {
-			return;
-		}
-		echo '<div class="notice epay-paycenter-review ' . ( $groups['active'] ? 'notice-warning' : 'notice-info' ) . '">';
-		if ( $groups['active'] ) {
-			echo '<p><strong>' . esc_html__( 'ePay: payments to review', 'resilient-gateway-for-epay-paycenter' ) . '</strong></p>';
-			self::render_items( $groups['active'] );
-		}
-		if ( $groups['historical'] ) {
-			echo '<details><summary>' . esc_html__( 'Historical checks', 'resilient-gateway-for-epay-paycenter' ) . ' (' . count( $groups['historical'] ) . ')</summary>';
-			echo '<p>' . esc_html__( 'These attempts were first checked after the recovery window. Review them in AdminTool when reconciling older orders.', 'resilient-gateway-for-epay-paycenter' ) . '</p>';
-			self::render_items( $groups['historical'] );
-			echo '</details>';
-		}
-		if ( $settings && $groups['reviewed'] ) {
-			echo '<details><summary>' . esc_html__( 'Reviewed cases', 'resilient-gateway-for-epay-paycenter' ) . ' (' . count( $groups['reviewed'] ) . ')</summary>';
-			self::render_items( $groups['reviewed'] );
+		$count   = count( $groups['payments'] ) + count( $groups['problems'] ) + count( $groups['unconfirmed'] ) + count( $groups['historical'] );
+		$warning = $groups['payments'] || $groups['problems'] || null === $status['awaiting']
+			|| ( $status['enabled'] && ( $status['overdue'] || ! $status['scheduled'] || ! empty( $status['last_run']['errors'] ) ) );
+		echo '<div class="notice epay-paycenter-review ' . ( $warning ? 'notice-warning' : 'notice-info' ) . '">';
+		echo '<p><strong>' . esc_html__( 'ePay: payment reviews', 'resilient-gateway-for-epay-paycenter' ) . '</strong></p>';
+		self::render_status( $status, $count );
+		$labels = array(
+			'payments'    => __( 'Payment discrepancies', 'resilient-gateway-for-epay-paycenter' ),
+			'problems'    => __( 'Check problems', 'resilient-gateway-for-epay-paycenter' ),
+			'unconfirmed' => __( 'Unconfirmed attempts', 'resilient-gateway-for-epay-paycenter' ),
+			'historical'  => __( 'Historical checks', 'resilient-gateway-for-epay-paycenter' ),
+			'reviewed'    => __( 'Reviewed cases', 'resilient-gateway-for-epay-paycenter' ),
+		);
+		$help   = array(
+			'payments'    => __( 'The bank confirmed payment. Review the discrepancy before fulfilment. Marking a case reviewed does not change the payment or order.', 'resilient-gateway-for-epay-paycenter' ),
+			'problems'    => __( 'Ask the site administrator to check the gateway log and resolve these technical problems.', 'resilient-gateway-for-epay-paycenter' ),
+			'unconfirmed' => __( 'Automatic checks ended without a final bank result. Check these references in AdminTool, then mark each case reviewed. An unconfirmed result does not prove payment or failure.', 'resilient-gateway-for-epay-paycenter' ),
+			'historical'  => __( 'These attempts were first checked after the recovery window. Review them in AdminTool when reconciling older orders.', 'resilient-gateway-for-epay-paycenter' ),
+		);
+		foreach ( $groups as $group => $group_items ) {
+			if ( ! $group_items || ( 'reviewed' === $group && ! $settings ) ) {
+				continue;
+			}
+			echo '<details' . ( in_array( $group, array( 'payments', 'problems' ), true ) ? ' open' : '' ) . '><summary>' . esc_html( $labels[ $group ] ) . ' (' . count( $group_items ) . ')</summary>';
+			if ( isset( $help[ $group ] ) ) {
+				echo '<p>' . esc_html( $help[ $group ] ) . '</p>';
+			}
+			self::render_items( $group_items, $orders );
 			echo '</details>';
 		}
 		echo '</div>';
 	}
 
 	/**
+	 * Distinguish configured recovery, queued attempts, and actual worker runs.
+	 *
+	 * @param array $status Read-only recovery snapshot.
+	 * @param int   $count Unreviewed cases, not distinct orders.
+	 * @phpstan-param RecoveryStatus $status
+	 */
+	private static function render_status( array $status, int $count ): void {
+		$enabled = $status['verified']
+			? ( $status['enabled'] ? __( 'Automatic recovery: Enabled', 'resilient-gateway-for-epay-paycenter' ) : __( 'Automatic recovery: Disabled', 'resilient-gateway-for-epay-paycenter' ) )
+			: __( 'Automatic recovery: Requires verification', 'resilient-gateway-for-epay-paycenter' );
+		echo '<div class="epay-review-overview"><p class="epay-review-status">' . esc_html( $enabled ) . '</p>';
+		if ( null === $status['awaiting'] ) {
+			echo '<p>' . esc_html__( 'Pending-check status is unavailable. Ask the site administrator to check the gateway log.', 'resilient-gateway-for-epay-paycenter' ) . '</p>';
+		} else {
+			echo '<p class="epay-review-awaiting">' . esc_html(
+				sprintf(
+				/* translators: %d: number of payment attempts, not distinct orders. */
+					_n( 'Awaiting bank result: %d attempt', 'Awaiting bank result: %d attempts', $status['awaiting'], 'resilient-gateway-for-epay-paycenter' ),
+					$status['awaiting']
+				)
+			) . '</p>';
+		}
+		echo '<p class="epay-review-count">' . esc_html(
+			$count ? sprintf(
+				/* translators: %d: number of unreviewed exceptions, not distinct orders. */
+				__( 'Unreviewed cases: %d', 'resilient-gateway-for-epay-paycenter' ),
+				$count
+			) : __( 'No unreviewed payment exceptions.', 'resilient-gateway-for-epay-paycenter' )
+		) . '</p></div>';
+		if ( ! $status['enabled'] ) {
+			echo '<p>' . esc_html__( 'Automatic checks are not running. Ask the site administrator to review the gateway settings.', 'resilient-gateway-for-epay-paycenter' ) . '</p>';
+		} elseif ( ! $status['scheduled'] ) {
+			echo '<p>' . esc_html__( 'No recovery run is scheduled. Ask the site administrator to check WordPress scheduled tasks.', 'resilient-gateway-for-epay-paycenter' ) . '</p>';
+		} elseif ( $status['overdue'] ) {
+			echo '<p>' . esc_html__( 'Automatic checks are more than 15 minutes behind. Ask the site administrator to check WordPress scheduled tasks and the gateway log.', 'resilient-gateway-for-epay-paycenter' ) . '</p>';
+		}
+		$run = $status['last_run'];
+		echo '<p class="epay-review-last-run">';
+		if ( null === $run ) {
+			echo esc_html__( 'No run recorded yet.', 'resilient-gateway-for-epay-paycenter' );
+		} else {
+			echo esc_html(
+				sprintf(
+				/* translators: %s: recovery run completion time in the site's timezone. */
+					__( 'Last recovery run: %s', 'resilient-gateway-for-epay-paycenter' ),
+					wp_date( 'Y-m-d H:i:s T', $run['completed_at'] )
+				)
+			) . ' — ';
+			echo esc_html(
+				$run['errors'] > 0
+				? __( 'Completed with errors. Ask the site administrator to check the gateway log.', 'resilient-gateway-for-epay-paycenter' )
+				: __( 'Completed without reported errors.', 'resilient-gateway-for-epay-paycenter' )
+			);
+		}
+		echo '</p>';
+	}
+
+	/**
 	 * Retire resolved checks, but never infer bank settlement from order status alone.
 	 *
-	 * @param array $item Stored exception.
+	 * @param array         $item Stored exception.
 	 * @phpstan-param ReviewItem $item
-	 * @return 'active'|'historical'|'reviewed'|'resolved'
+	 * @param array|null    $row Latest stored attempt, if it still exists.
+	 * @param WC_Order|null $order Current order, if it still exists.
+	 * @phpstan-param ReviewTicket|null $row
+	 * @return 'payments'|'problems'|'unconfirmed'|'historical'|'reviewed'|'resolved'
 	 */
-	private static function group( array $item ): string {
+	private static function group( array $item, ?array $row, ?WC_Order $order ): string {
 		if ( '' !== $item['reviewed_at'] ) {
 			return 'reviewed';
 		}
 		if ( in_array( $item['type'], array( 'unresolved', 'settlement_error' ), true ) && '' !== $item['reference'] ) {
-			global $wpdb;
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-			$row = $wpdb->get_row( $wpdb->prepare( 'SELECT follow_up_state, follow_up_attempts, created_at, last_checked_at FROM %i WHERE order_id = %d AND merchant_reference = %s ORDER BY id DESC LIMIT 1', $wpdb->prefix . 'epay_paycenter_tickets', $item['order_id'], $item['reference'] ), ARRAY_A );
 			if ( is_array( $row ) ) {
 				if ( 'unresolved' === $item['type'] && in_array( $row['follow_up_state'], array( 'paid', 'local_paid', 'declined' ), true ) ) {
 					return 'resolved';
 				}
-				$order = wc_get_order( $item['order_id'] );
 				if ( 'settlement_error' === $item['type'] && 'paid' === $row['follow_up_state'] && $order instanceof WC_Order && $order->is_paid() ) {
 					return 'resolved';
 				}
@@ -228,16 +353,64 @@ final class Epay_Paycenter_Review {
 				}
 			}
 		}
-		return 'unresolved' === $item['type'] && $item['historical'] ? 'historical' : 'active';
+		if ( 'unresolved' === $item['type'] ) {
+			return $item['historical'] ? 'historical' : 'unconfirmed';
+		}
+		return in_array( $item['type'], array( 'missing_paid', 'trash_paid', 'late_paid', 'double_paid', 'settlement_error', 'database_error' ), true ) ? 'payments' : 'problems';
+	}
+
+	/**
+	 * Load attempt classifications in batches, rather than once per case.
+	 *
+	 * @param array $items Stored exceptions.
+	 * @phpstan-param array<string,ReviewItem> $items
+	 * @phpstan-return array<int,array<string,ReviewTicket>>
+	 * @throws RuntimeException If the classification query fails.
+	 */
+	private static function tickets( array $items ): array {
+		global $wpdb;
+		$ids = array();
+		foreach ( $items as $item ) {
+			if ( '' === $item['reviewed_at'] && in_array( $item['type'], array( 'unresolved', 'settlement_error' ), true ) ) {
+				$ids[] = $item['order_id'];
+			}
+		}
+		$tickets = array();
+		foreach ( array_chunk( array_unique( $ids ), 200 ) as $batch ) {
+			$placeholders = implode( ',', array_fill( 0, count( $batch ), '%d' ) );
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Only generated integer placeholders are interpolated.
+					"SELECT order_id, merchant_reference, follow_up_state, follow_up_attempts, created_at, last_checked_at FROM %i WHERE order_id IN ($placeholders) ORDER BY id ASC",
+					array_merge( array( $wpdb->prefix . 'epay_paycenter_tickets' ), $batch )
+				),
+				ARRAY_A
+			);
+			if ( '' !== $wpdb->last_error || ! is_array( $rows ) ) {
+				throw new RuntimeException( 'Could not read review attempts.' );
+			}
+			foreach ( $rows as $row ) {
+				$tickets[ (int) $row['order_id'] ][ (string) $row['merchant_reference'] ] = array(
+					'follow_up_state'    => (string) $row['follow_up_state'],
+					'follow_up_attempts' => (int) $row['follow_up_attempts'],
+					'created_at'         => (string) $row['created_at'],
+					'last_checked_at'    => (string) $row['last_checked_at'],
+				);
+			}
+		}
+		return $tickets;
 	}
 
 	/**
 	 * Explain the concrete reason and provide an explicit review action.
 	 *
 	 * @param array $items Visible exceptions.
+	 * @param array $orders Orders loaded once per distinct order id.
 	 * @phpstan-param array<string,ReviewItem> $items
+	 * @phpstan-param array<int,WC_Order|null> $orders
 	 */
-	private static function render_items( array $items ): void {
+	private static function render_items( array $items, array $orders ): void {
 		$reasons = array(
 			'unresolved'           => __( 'No final bank result. Check this reference in AdminTool before treating it as paid or unpaid.', 'resilient-gateway-for-epay-paycenter' ),
 			'missing_paid'         => __( 'Bank confirmed payment, but the order is missing or cannot be fulfilled. Account for the payment in AdminTool.', 'resilient-gateway-for-epay-paycenter' ),
@@ -250,7 +423,7 @@ final class Epay_Paycenter_Review {
 		);
 		echo '<ul>';
 		foreach ( $items as $key => $item ) {
-			$order = wc_get_order( $item['order_id'] );
+			$order = $orders[ $item['order_id'] ];
 			$label = '#' . $item['order_id'] . ( '' !== $item['reference'] ? ' — ' . $item['reference'] : '' );
 			echo '<li><p>';
 			if ( $order instanceof WC_Order ) {

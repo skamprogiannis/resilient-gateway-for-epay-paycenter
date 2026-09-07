@@ -105,11 +105,14 @@ async function readOrder(request, orderId) {
 }
 
 async function loginAsLocalAdmin(page) {
-  await page.goto('/wp-login.php');
-  await page.locator('#user_login').fill('localadmin');
-  await page.locator('#user_pass').fill('localadmin123');
-  await page.locator('#wp-submit').click();
-  await page.waitForURL(/\/wp-admin\//);
+  // Use real WordPress authentication without racing the login page's delayed autofocus.
+  await page.request.get('/wp-login.php');
+  const response = await page.request.post('/wp-login.php', {
+    form: { log: 'localadmin', pwd: 'localadmin123', testcookie: '1' }, maxRedirects: 0,
+  });
+  expect(response.status()).toBe(302);
+  await page.goto('/wp-admin/');
+  await expect(page.locator('#wpadminbar')).toBeVisible();
 }
 
 async function sendCallback(request, path, payload) {
@@ -1326,8 +1329,15 @@ test('@review staff see actionable cases only on order screens and can acknowled
   await setFixture(request, `follow-up/age-attempt/${historical.order_id}`, {});
   await setFixture(request, 'fake-follow-up', { scenario: 'not_found', channel: 'eCommerce' });
   await setFixture(request, `follow-up/run/${historical.order_id}`, {});
+  const monitored = await createOrder(request);
+  const monitoredAttempt = await issueAttempt(request, monitored);
+  await setFixture(request, `follow-up/run/${monitored.order_id}`, {});
+  await setFixture(request, `follow-up/age-attempt/${monitored.order_id}`, {});
+  await setFixture(request, `follow-up/run/${monitored.order_id}`, {});
+  await setFixture(request, `mark-processing/${monitored.order_id}`, {});
   const missing = await createOrder(request);
   const paidAttempt = await issueAttempt(request, missing);
+  await setFixture(request, `follow-up/age-attempt/${missing.order_id}`, {});
   await setFixture(request, `delete-order/${missing.order_id}`, {});
   await setFixture(request, 'fake-follow-up', { scenario: 'paid', channel: 'eCommerce' });
   await setFixture(request, `follow-up/run/${missing.order_id}`, {});
@@ -1336,6 +1346,13 @@ test('@review staff see actionable cases only on order screens and can acknowled
   await expect(page.getByText(paidAttempt.MerchantReference, { exact: false })).toHaveCount(0);
   await page.goto('/wp-admin/edit.php?post_type=shop_order');
   const review = page.locator('.epay-paycenter-review');
+  const discrepancies = review.locator('details').filter({ has: page.locator('summary', { hasText: 'Payment discrepancies' }) });
+  await expect(discrepancies).toHaveAttribute('open', '');
+  await expect(discrepancies).toContainText(paidAttempt.MerchantReference);
+  const unconfirmed = review.locator('details').filter({ has: page.locator('summary', { hasText: 'Unconfirmed attempts' }) });
+  await expect(unconfirmed).not.toHaveAttribute('open', '');
+  await expect(unconfirmed).toContainText(monitoredAttempt.MerchantReference);
+  await expect(review).toContainText('Unreviewed cases: 3');
   const paidRow = review.locator('li').filter({ hasText: paidAttempt.MerchantReference });
   await expect(paidRow).toContainText('Bank confirmed payment, but the order is missing');
   const reviewKey = await paidRow.locator('[name="review_key"]').inputValue();
@@ -1362,8 +1379,152 @@ test('@review staff see actionable cases only on order screens and can acknowled
   expect(missingState.order).toBeNull();
   expect(missingState.ticket_statuses).toEqual({ [paidAttempt.MerchantReference]: 'succeeded' });
   await page.goto('/wp-admin/admin.php?page=wc-settings&tab=checkout&section=epay_paycenter');
-  await review.getByText('Reviewed cases', { exact: false }).click();
+  await review.locator('summary').filter({ hasText: /^Reviewed cases/ }).click();
   await expect(review.locator('li').filter({ hasText: paidAttempt.MerchantReference })).toContainText('Reviewed (UTC)');
+});
+
+test('@review @recovery-status distinguishes queued attempts and channel verification from a completed worker run', async ({ page, request }) => {
+  const verification = await createOrder(request);
+  await issueAttempt(request, verification);
+  await verifyAndEnableFollowUp(request, verification);
+  const order = await createOrder(request);
+  await issueAttempt(request, order);
+  await issueAttempt(request, order);
+  await setFixture(request, 'follow-up/isolate-queue', { order_ids: [order.order_id] });
+  const before = await readOrder(request, order.order_id);
+  await loginAsLocalAdmin(page);
+  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  const review = page.locator('.epay-paycenter-review');
+  await expect(review).toContainText('Automatic recovery: Enabled');
+  await expect(review).toContainText('Awaiting bank result: 2 attempts');
+  await expect(review).toContainText('No unreviewed payment exceptions.');
+  await expect(review).toContainText('No run recorded yet.');
+  await setFixture(request, 'follow-up/worker', {});
+  await page.reload();
+  await expect(review).toContainText('Last recovery run:');
+  await expect(review).toContainText('Completed without reported errors.');
+  await expect(review).not.toContainText('No run recorded yet.');
+  expect(await readOrder(request, order.order_id)).toEqual(before);
+});
+
+test('@review @recovery-faults reports delayed and failed checks without a false all-clear', async ({ page, request }) => {
+  const order = await createOrder(request);
+  await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, 'follow-up/isolate-queue', { order_ids: [order.order_id] });
+  await setFixture(request, `follow-up/prioritise/${order.order_id}`, {});
+  await loginAsLocalAdmin(page);
+  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  const review = page.locator('.epay-paycenter-review');
+  await expect(review).toContainText('Automatic checks are more than 15 minutes behind.');
+  await setFixture(request, 'fake-follow-up', { scenario: 'transport_error', channel: 'eCommerce' });
+  await setFixture(request, 'follow-up/worker', {});
+  await page.reload();
+  await expect(review).toContainText('Completed with errors.');
+  await expect(review).toContainText('Awaiting bank result: 1 attempt');
+  for (const [scenario, expected] of [
+    ['missing-schedule', 'No recovery run is scheduled.'],
+    ['disabled', 'Automatic recovery: Disabled'],
+    ['changed-credentials', 'Automatic recovery: Requires verification'],
+    ['queue-error', 'Pending-check status is unavailable.'],
+    ['report-error', 'Payment review status is unavailable.'],
+    ['worker-status-error', 'Payment review status is unavailable.'],
+  ]) {
+    await page.setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification', 'X-Epay-Test-Recovery-Scenario': scenario });
+    await page.reload();
+    await expect(review).toContainText(expected);
+    if (scenario === 'changed-credentials') await expect(review).toContainText('No run recorded yet.');
+    if (scenario === 'queue-error') await expect(review).not.toContainText('Awaiting bank result: 0');
+    if (scenario === 'report-error') await expect(review).not.toContainText('No unreviewed payment exceptions.');
+  }
+});
+
+test('@review @review-technical a failed attempt read becomes a technical check problem, not a clean worker run', async ({ page, request }) => {
+  const order = await createOrder(request);
+  await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, 'follow-up/isolate-queue', { order_ids: [order.order_id] });
+  await setFixture(request, `follow-up/prioritise/${order.order_id}`, {});
+  const before = await readOrder(request, order.order_id);
+  const run = await request.post('/wp-json/epay-test/v1/follow-up/worker', {
+    headers: { 'X-Epay-Test-Recovery-Scenario': 'attempt-error' }, data: {},
+  });
+  expect(run.ok()).toBe(true);
+  await loginAsLocalAdmin(page);
+  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  const review = page.locator('.epay-paycenter-review');
+  await expect(review).toContainText('Check problems (1)');
+  await expect(review).toContainText('Completed with errors.');
+  await expect(review).not.toContainText('Payment discrepancies');
+  expect(await readOrder(request, order.order_id)).toEqual(before);
+});
+
+test('@review @review-locale Greek review labels and historical disclosure fit order screens', async ({ page, request }) => {
+  const historical = await createOrder(request);
+  const attempt = await issueAttempt(request, historical);
+  await verifyAndEnableFollowUp(request, historical);
+  await setFixture(request, `follow-up/age-attempt/${historical.order_id}`, {});
+  await setFixture(request, 'fake-follow-up', { scenario: 'not_found', channel: 'eCommerce' });
+  await setFixture(request, `follow-up/run/${historical.order_id}`, {});
+  const missing = await createOrder(request);
+  await issueAttempt(request, missing);
+  await setFixture(request, `delete-order/${missing.order_id}`, {});
+  await setFixture(request, 'fake-follow-up', { scenario: 'paid', channel: 'eCommerce' });
+  await setFixture(request, `follow-up/run/${missing.order_id}`, {});
+  await setFixture(request, 'follow-up/isolate-queue', { order_ids: [] });
+  await loginAsLocalAdmin(page);
+  await page.setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification', 'X-Epay-Test-Locale': 'el' });
+  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  const review = page.locator('.epay-paycenter-review');
+  await expect(review).toContainText('Αυτόματη ανάκτηση: Ενεργή');
+  await expect(review).toContainText('Εκκρεμείς έλεγχοι: 2');
+  for (const [name, width] of [['desktop', 1280], ['mobile', 390]]) {
+    await page.setViewportSize({ width, height: 900 });
+    const box = await review.boundingBox();
+    expect(box.width).toBeLessThanOrEqual(width);
+    expect(await review.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    if (process.env.EPAY_TEST_CAPTURE_UI) await page.screenshot({ path: test.info().outputPath(`review-${name}-el.png`), fullPage: true });
+  }
+  const historicalGroup = review.locator('details').filter({ hasText: attempt.MerchantReference });
+  const toggle = historicalGroup.locator('summary');
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(historicalGroup.locator('li')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(historicalGroup.locator('li')).not.toBeVisible();
+  await page.goto(`/wp-admin/post.php?post=${historical.order_id}&action=edit`);
+  await expect(review).toBeVisible();
+});
+
+test('@review @review-resolved final bank evidence retires unconfirmed and settlement-error cases', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, `follow-up/age-attempt/${order.order_id}`, {});
+  await setFixture(request, 'fake-follow-up', { scenario: 'not_found', channel: 'eCommerce' });
+  await setFixture(request, `follow-up/run/${order.order_id}`, {});
+  await loginAsLocalAdmin(page);
+  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  const review = page.locator('.epay-paycenter-review');
+  await expect(review).toContainText(attempt.MerchantReference);
+  await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, attempt.MerchantReference, {
+    StatusFlag: 'Failure', ResponseCode: '05', ResultDescription: 'Declined',
+  }));
+  expect((await readOrder(request, order.order_id)).epay.follow_up[attempt.MerchantReference].state).toBe('declined');
+  await page.reload();
+  await expect(review).not.toContainText(attempt.MerchantReference);
+
+  const retry = await createOrder(request);
+  const retryAttempt = await issueAttempt(request, retry);
+  await setFixture(request, 'fake-follow-up', { scenario: 'paid', channel: 'eCommerce' });
+  await setFixture(request, 'follow-up/fail-next-payment-complete', {});
+  await setFixture(request, `follow-up/run/${retry.order_id}`, {});
+  await page.reload();
+  await expect(review).toContainText('Bank confirmed payment, but the order update failed.');
+  await setFixture(request, `follow-up/run/${retry.order_id}`, {});
+  await page.reload();
+  await expect(review).not.toContainText(retryAttempt.MerchantReference);
+  await expect(review).toContainText('No unreviewed payment exceptions.');
 });
 
 test('@matrix payment handoff renders with supported shipping methods', async ({ page, request }) => {
