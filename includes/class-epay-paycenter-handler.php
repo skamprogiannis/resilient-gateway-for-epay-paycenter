@@ -7,12 +7,19 @@
  * customer to the appropriate thank-you or checkout page.
  *
  * @package EpayPaycenter
+ *
+ * Supports concurrent-attempt cancellation, authenticated audit outcomes,
+ * pending IRIS responses, and callback/follow-up correlation.
  */
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Response handler.
+ *
+ * @phpstan-type CallbackParams array{SupportReferenceID:string, ResultCode:string, ResultDescription:string, StatusFlag:string, ResponseCode:string, ResponseDescription:string, LanguageCode:string, MerchantReference:string, TransactionDateTime:string, TransactionId:string, CardType:string, PackageNo:string, ApprovalCode:string, RetrievalRef:string, AuthStatus:string, Parameters:string, HashKey:string, PaymentMethod:string, TraceID:string, PanCardType:string}
+ * @phpstan-type FailurePresentation array{order_note:string, user_notice:string, status:string, notice_type:string}
+ * @phpstan-type FailureScenario array{label:string, message:string}
  */
 class Epay_Paycenter_Handler {
 
@@ -42,6 +49,9 @@ class Epay_Paycenter_Handler {
 	 */
 	const LOG_BUDGET_ANOMALY = 20;
 
+	/** Maximum accepted callback field size, in bytes. */
+	const MAX_CALLBACK_FIELD_BYTES = 2048;
+
 	/**
 	 * Reference to the gateway instance so we can reuse its configuration.
 	 *
@@ -66,6 +76,8 @@ class Epay_Paycenter_Handler {
 	 * `woocommerce_api_epay_paycenter` action, so reaching it means the URL
 	 * `/wc-api/epay_paycenter/` was hit from a trusted context (the Paycenter
 	 * callback or the cancel link).
+	 *
+	 * @return void
 	 */
 	public function handle() {
 		// Optional source-IP allowlist. When the filter returns a non-empty
@@ -74,49 +86,31 @@ class Epay_Paycenter_Handler {
 		// Euronet Merchant Services) should configure this filter to add a
 		// first-line network guard before any application logic runs.
 		//
-		// Proxy / CDN awareness: if the site sits behind Cloudflare the
-		// real client IP is in CF-Connecting-IP, not REMOTE_ADDR. The
-		// snippet below checks CF-Connecting-IP first, then falls back to
-		// REMOTE_ADDR, so the filter works correctly in both topologies.
+		// Forwarded client IPs are accepted only when REMOTE_ADDR matches
+		// an explicitly configured trusted proxy. Public headers alone never
+		// establish that a request came through that proxy.
 		//
-		// Example (add to your theme's functions.php or a mu-plugin):
-		//   add_filter( 'epay_paycenter_allowed_callback_ips', function() {
-		//       return array( '1.2.3.4', '5.6.7.8' ); // Euronet source IPs
-		//   } );
 		$allowed_ips = apply_filters( 'epay_paycenter_allowed_callback_ips', array() );
-		if ( ! empty( $allowed_ips ) && is_array( $allowed_ips ) ) {
-			$remote_ip = '';
-			// phpcs:disable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			// SECURITY: CF-Connecting-IP is only consulted when the request
-			// actually arrived through Cloudflare. On a site that is NOT
-			// proxied, that header is attacker-supplied and trusting it would
-			// let anyone bypass the allowlist with a single spoofed header.
-			// REMOTE_ADDR is the only value the web server itself guarantees.
-			//
-			// Even behind Cloudflare this is a defence-in-depth layer, not a
-			// primary control: it is only meaningful if the origin also
-			// refuses connections that do not come from Cloudflare's ranges.
-			// All order state changes remain gated on the HashKey and the
-			// per-order MerchantReference secret.
-			if (
-				$this->gateway->is_cloudflare_proxied()
-				&& ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] )
-				&& is_string( $_SERVER['HTTP_CF_CONNECTING_IP'] )
-			) {
-				$remote_ip = sanitize_text_field( wp_unslash( $_SERVER['HTTP_CF_CONNECTING_IP'] ) );
-			} elseif ( ! empty( $_SERVER['REMOTE_ADDR'] ) && is_string( $_SERVER['REMOTE_ADDR'] ) ) {
-				$remote_ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) );
-			}
-			// phpcs:enable
-			if ( ! in_array( $remote_ip, $allowed_ips, true ) ) {
-				Epay_Paycenter_Logger::debug(
-					'Callback from IP not in allowlist; ignored.',
-					array( 'remote_ip' => $remote_ip )
-				);
-				wp_safe_redirect( function_exists( 'wc_get_checkout_url' ) ? wc_get_checkout_url() : home_url( '/' ) );
-				exit;
+		if ( ! is_array( $allowed_ips ) ) {
+			Epay_Paycenter_Logger::error( 'Callback IP allowlist configuration is invalid; request rejected.' );
+			$this->redirect_to_checkout();
+		}
+		$allowlist_configured = ! empty( $allowed_ips );
+		$allowed_ips          = $this->valid_ip_list( $allowed_ips );
+		if ( $allowlist_configured && empty( $allowed_ips ) ) {
+			Epay_Paycenter_Logger::error( 'Callback IP allowlist contains no valid addresses; request rejected.' );
+			$this->redirect_to_checkout();
+		}
+		if ( ! empty( $allowed_ips ) ) {
+			$remote_ip = $this->callback_remote_ip();
+			if ( '' === $remote_ip || ! in_array( $remote_ip, $allowed_ips, true ) ) {
+				Epay_Paycenter_Logger::debug( 'Callback source did not match the configured IP allowlist; request rejected.' );
+				$this->redirect_to_checkout();
 			}
 		}
+
+		// The admin reachability probe checks that this handler passed IP policy.
+		header( 'X-Epay-Paycenter-Handler: 1' );
 
 		// Accept both POST and GET per manual Section 5. Authenticity of
 		// the response payload is enforced via HashKey (HMAC-SHA256) in
@@ -141,9 +135,18 @@ class Epay_Paycenter_Handler {
 
 	/**
 	 * Handle a success or failure response from Paycenter.
+	 *
+	 * @throws RuntimeException Caught locally if WooCommerce cannot persist payment.
+	 * @return void
 	 */
 	private function handle_response() {
 		$params = $this->collect_response_params();
+		if ( ! $this->callback_params_are_valid( $params ) ) {
+			if ( $this->consume_log_budget( 'anomaly', self::LOG_BUDGET_ANOMALY ) ) {
+				Epay_Paycenter_Logger::error( 'Callback payload failed structural validation; request rejected.' );
+			}
+			$this->redirect_to_checkout();
+		}
 
 		// Log a compact "envelope" record early so that callbacks which bail
 		// out later (unknown order, reference mismatch, HashKey mismatch)
@@ -164,14 +167,14 @@ class Epay_Paycenter_Handler {
 
 		if ( empty( $params['MerchantReference'] ) ) {
 			// Distinguish between:
-			//  (a) an empty request - bot / scanner / crawler / direct
-			//      browser visit to the public WC-API callback URL. No
-			//      Paycenter response fields present at all. This is noise
-			//      and must not spam the WooCommerce error log.
-			//  (b) a real anomaly - some Paycenter response fields present
-			//      but MerchantReference missing. Indicates a transport or
-			//      configuration issue on the Paycenter side and is worth
-			//      surfacing at error level with a redacted snapshot.
+			// (a) an empty request - bot / scanner / crawler / direct
+			// browser visit to the public WC-API callback URL. No
+			// Paycenter response fields present at all. This is noise
+			// and must not spam the WooCommerce error log.
+			// (b) a real anomaly - some Paycenter response fields present
+			// but MerchantReference missing. Indicates a transport or
+			// configuration issue on the Paycenter side and is worth
+			// surfacing at error level with a redacted snapshot.
 			$has_any_payload = false;
 			foreach ( $params as $field_value ) {
 				if ( '' !== $field_value ) {
@@ -182,10 +185,7 @@ class Epay_Paycenter_Handler {
 
 			if ( $has_any_payload ) {
 				if ( $this->consume_log_budget( 'anomaly', self::LOG_BUDGET_ANOMALY ) ) {
-					Epay_Paycenter_Logger::error(
-						'Callback missing MerchantReference',
-						array( 'params' => $params )
-					);
+					Epay_Paycenter_Logger::error( 'Callback missing MerchantReference; request rejected.' );
 				}
 			} else {
 				Epay_Paycenter_Logger::debug( 'WC-API callback endpoint hit without payload; ignored.' );
@@ -197,7 +197,7 @@ class Epay_Paycenter_Handler {
 		$order_id = $this->resolve_order_id_from_params( $params );
 		$order    = $order_id ? wc_get_order( $order_id ) : false;
 
-		if ( ! $order || $order->get_payment_method() !== EPAY_PAYCENTER_GATEWAY_ID ) {
+		if ( ! $order instanceof WC_Order || $order->get_payment_method() !== EPAY_PAYCENTER_GATEWAY_ID ) {
 			if ( $this->consume_log_budget( 'anomaly', self::LOG_BUDGET_ANOMALY ) ) {
 				Epay_Paycenter_Logger::error(
 					'Callback for unknown / mismatched order',
@@ -227,7 +227,7 @@ class Epay_Paycenter_Handler {
 		// Accepting callbacks against an order with no issued attempt would
 		// allow any unauthenticated client to set a pending order to "failed"
 		// by simply guessing its sequential order ID.
-		$open_tickets = Epay_Paycenter_Gateway::get_open_tickets( $order );
+		$open_tickets = Epay_Paycenter_Open_Tickets::all( $order );
 		if ( empty( $open_tickets ) ) {
 			Epay_Paycenter_Logger::debug(
 				'Callback received before ticket issuance; ignored to prevent unauthenticated status change.',
@@ -244,7 +244,7 @@ class Epay_Paycenter_Handler {
 		foreach ( $open_tickets as $open_reference => $open_data ) {
 			if ( hash_equals( (string) $open_reference, $received_reference ) ) {
 				$reference_matched = true;
-				$tran_ticket       = isset( $open_data['ticket'] ) ? (string) $open_data['ticket'] : '';
+				$tran_ticket       = $open_data['ticket'];
 			}
 		}
 		if ( ! $reference_matched ) {
@@ -258,24 +258,28 @@ class Epay_Paycenter_Handler {
 			exit;
 		}
 
+		$result_code = (string) $params['ResultCode'];
+		$status_flag = (string) $params['StatusFlag'];
+		$is_success  = '0' === $result_code && 'Success' === $status_flag;
+
 		// Idempotency: once a successful callback has been processed for
 		// this order, its status and payment audit meta must never change
 		// again - replayed callbacks could otherwise flip a paid order
 		// into failed/on-hold after the TranTicket was cleared from order
 		// meta. Two sub-cases:
-		//  (a) replayed / duplicate SUCCESS callback - pure noise; log
-		//      and redirect to the thank-you page.
-		//  (b) non-success callback - §7 Test Case 3 "RECHARGE ATTEMPT"
-		//      (ResultCode 1048): the customer re-submitted the payment
-		//      form after the transaction was approved (browser Back
-		//      re-runs the cached auto-submit form) and the bank rejected
-		//      the reused MerchantReference. The order state is correct
-		//      and stays untouched, but the spec still requires the
-		//      merchant application to record the attempt and display a
-		//      message on the user page - handled by
-		//      record_recharge_attempt().
+		// (a) replayed / duplicate SUCCESS callback - pure noise; log
+		// and redirect to the thank-you page.
+		// (b) non-success callback - §7 Test Case 3 "RECHARGE ATTEMPT"
+		// (ResultCode 1048): the customer re-submitted the payment
+		// form after the transaction was approved (browser Back
+		// re-runs the cached auto-submit form) and the bank rejected
+		// the reused MerchantReference. The order state is correct
+		// and stays untouched, but the spec still requires the
+		// merchant application to record the attempt and display a
+		// message on the user page - handled by
+		// record_recharge_attempt().
 		if ( $order->is_paid() ) {
-			if ( '0' === $params['ResultCode'] && 'Success' === $params['StatusFlag'] ) {
+			if ( $is_success ) {
 				Epay_Paycenter_Logger::info(
 					'Duplicate callback ignored - order already paid',
 					array( 'order_id' => $order_id )
@@ -287,94 +291,42 @@ class Epay_Paycenter_Handler {
 			exit;
 		}
 
-		Epay_Paycenter_Logger::info(
-			'Paycenter callback received',
-			array_merge( $params, array( 'order_id' => $order_id ) )
-		);
-
-		// Persist every Paycenter response parameter that Redirection
-		// Manual v2.9 §5 identifies as a merchant-side storage
-		// requirement for declined transactions:
-		//   - SupportReferenceID
-		//   - MerchantReference (refreshed from the live callback even
-		//     though we already wrote it at ticket creation, so the
-		//     value echoed back by the bank is what remains on the
-		//     order - audit parity with the Paycenter back-office)
-		//   - ResultCode / ResultDescription
-		//   - ResponseCode / ResponseDescription
-		// The remaining fields (StatusFlag / TransactionId / AuthStatus)
-		// are stored for operational traceability.
-		$order->update_meta_data( '_epay_support_reference_id', $params['SupportReferenceID'] );
-		$order->update_meta_data( '_epay_merchant_reference', $params['MerchantReference'] );
-		$order->update_meta_data( '_epay_result_code', $params['ResultCode'] );
-		$order->update_meta_data( '_epay_result_description', $params['ResultDescription'] );
-		$order->update_meta_data( '_epay_response_code', $params['ResponseCode'] );
-		$order->update_meta_data( '_epay_response_description', $params['ResponseDescription'] );
-		$order->update_meta_data( '_epay_status_flag', $params['StatusFlag'] );
-		$order->update_meta_data( '_epay_transaction_id', $params['TransactionId'] );
-		$order->update_meta_data( '_epay_auth_status', $params['AuthStatus'] );
-		// CardType / PaymentMethod identify the channel selected by the
-		// customer on the bank's payment page (card vs IRIS). Per
-		// Redirection Manual v2.9 §5 they are HMAC-protected fields, so
-		// these stored values can be trusted for downstream branching
-		// (e.g. blocking refund attempts on IRIS-paid orders in future
-		// releases since Piraeus Bank returns ResponseCode 9167 for
-		// refund requests on IRIS transactions).
-		$order->update_meta_data( '_epay_card_type', $params['CardType'] );
-		$order->update_meta_data( '_epay_payment_method', $params['PaymentMethod'] );
-		// PanCardType (Redirection Manual v3.1 §5) is populated ONLY for
-		// Google Pay transactions: FPAN = the real card number, DPAN = a
-		// device token. Its presence is what distinguishes a Google Pay
-		// payment from a manually keyed card - PaymentMethod is "Card" for
-		// both. Stored for merchant visibility; empty for every non-wallet
-		// payment. Google Pay itself needs no special handling: the bank
-		// applies 3-D Secure (FPAN) or relies on Google's prior device
-		// authentication (DPAN) and returns the same card success payload
-		// the plugin already verifies against the (unchanged) HashKey.
-		$order->update_meta_data( '_epay_pan_card_type', $params['PanCardType'] );
-		$order->update_meta_data( '_epay_last_callback_at', current_time( 'mysql', true ) );
-
-		$result_code = $params['ResultCode'];
-		$status_flag = $params['StatusFlag'];
-
-		if ( '0' !== $result_code || 'Success' !== $status_flag ) {
-			// Authenticate the failure callback before mutating order
-			// state. Redirection Manual v2.9 §5 only mandates HashKey
-			// verification on the success response, and Paycenter returns
-			// an EMPTY HashKey on declined transactions (see the "Callback
-			// diagnostics" note on the settings screen). We therefore
-			// verify opportunistically and fail CLOSED only when a HashKey
-			// is actually present but does not match: that signals a
-			// forged / tampered payload, so the order must be left
-			// untouched. When no HashKey is present (the documented
-			// decline case) we rely on the MerchantReference secret
-			// (order id + per-order CSPRNG suffix) already verified above
-			// in handle_response(), which is what gates this branch today.
-			if ( false === $this->verify_nonsuccess_signature( $order, $params, $tran_ticket ) ) {
+		if ( ! $is_success ) {
+			// A failure response can change the order just as significantly
+			// as a success response, so require a valid signature before
+			// persisting its fields or changing any local state. Unsigned
+			// declines remain unchanged for reconciliation to resolve.
+			if ( true !== $this->verify_nonsuccess_signature( $order, $params, $tran_ticket ) ) {
 				Epay_Paycenter_Logger::error(
-					'Non-success callback carried an invalid HashKey; order state left unchanged.',
-					array(
-						'order_id' => $order_id,
-						'support'  => $params['SupportReferenceID'],
-					)
+					'Non-success callback could not be authenticated; order state left unchanged.',
+					array( 'order_id' => $order_id )
 				);
 				wp_safe_redirect( $order->get_checkout_payment_url() );
 				exit;
 			}
+
+			$params = $this->sanitize_callback_params( $params );
+			$this->persist_callback_metadata( $order, $params );
 
 			$messages = $this->describe_failure( $params );
 
 			// Not every non-success callback is a failure. IRIS ResponseCode
 			// 09 means the transfer was initiated and may still settle, so
 			// describe_failure() returns 'on-hold' for it and 'failed' for
-			// everything else. Defaulting here keeps any future scenario that
-			// forgets to set a status on the safe, unchanged-behaviour path.
-			$new_status  = isset( $messages['status'] ) ? (string) $messages['status'] : 'failed';
-			$notice_type = isset( $messages['notice_type'] ) ? (string) $messages['notice_type'] : 'error';
+			// everything else.
+			$new_status  = $messages['status'];
+			$notice_type = $messages['notice_type'];
 			$is_pending  = ( 'failed' !== $new_status );
 
 			$order->update_status( $new_status, $messages['order_note'] );
 			$order->save();
+			if ( ! $is_pending ) {
+				Epay_Paycenter_Ticket_Audit::mark(
+					$order_id,
+					$received_reference,
+					Epay_Paycenter_Ticket_Audit::STATUS_FAILED
+				);
+			}
 
 			// Surface the decline message via two redundant channels
 			// because the Paycenter callback is a cross-origin POST
@@ -383,20 +335,20 @@ class Epay_Paycenter_Handler {
 			// plain `wc_add_notice()` call here can land in an
 			// orphan session that the customer's subsequent GET to
 			// the pay-for-order URL never sees.
-			//   1. Legacy session-bound notice (may or may not make
-			//      it through, depending on browser / host cookie
-			//      behaviour).
-			//   2. Order-scoped transient drained by
-			//      `Epay_Paycenter_Plugin::surface_pending_order_notice()`
-			//      during the next render of this order's
-			//      pay-for-order page - session-independent, which
-			//      is what Redirection Manual v2.9 §5 "Display of
-			//      transaction decline message received from Issuer
-			//      on the user page" effectively requires.
-			// `surface_pending_order_notice()` de-duplicates so the
+			// 1. Legacy session-bound notice (may or may not make
+			// it through, depending on browser / host cookie
+			// behaviour).
+			// 2. Order-scoped transient drained by
+			// `Epay_Paycenter_Order_Notices::render_payment_page()`
+			// during the next render of this order's
+			// pay-for-order page - session-independent, which
+			// is what Redirection Manual v2.9 §5 "Display of
+			// transaction decline message received from Issuer
+			// on the user page" effectively requires.
+			// `render_payment_page()` de-duplicates so the
 			// customer never sees the same line twice.
 			wc_add_notice( $messages['user_notice'], $notice_type );
-			Epay_Paycenter_Plugin::queue_order_notice( $order_id, $messages['user_notice'], $notice_type );
+			Epay_Paycenter_Order_Notices::queue( $order_id, $messages['user_notice'], $notice_type );
 
 			// Explicit "handler ran to completion" marker. If this line
 			// is visible in WooCommerce -> Status -> Logs for a given
@@ -448,9 +400,7 @@ class Epay_Paycenter_Handler {
 				'No TranTicket stored for order',
 				array( 'order_id' => $order_id )
 			);
-			$order->update_status( 'on-hold', __( 'Paycenter reported success but no TranTicket was stored for verification. Manual review required.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ) );
-			$order->save();
-			wp_safe_redirect( $this->gateway->get_return_url( $order ) );
+			wp_safe_redirect( wc_get_checkout_url() );
 			exit;
 		}
 
@@ -459,23 +409,22 @@ class Epay_Paycenter_Handler {
 		if ( ! Epay_Paycenter_Hash::verify( $params['HashKey'], $verify_fields ) ) {
 			Epay_Paycenter_Logger::error(
 				'HashKey verification failed',
-				array(
-					'order_id' => $order_id,
-					'support'  => $params['SupportReferenceID'],
-				)
-			);
-			$order->update_status(
-				'on-hold',
-				__( 'Payment reported successful by Paycenter but HashKey verification failed. Manual review required before fulfilling the order.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' )
-			);
-			$order->save();
-			wc_add_notice(
-				__( 'Payment could not be verified. Our team has been notified. Please contact support before retrying the payment.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'error'
+				array( 'order_id' => $order_id )
 			);
 			wp_safe_redirect( wc_get_checkout_url() );
 			exit;
 		}
+
+		$params = $this->sanitize_callback_params( $params );
+		$this->persist_callback_metadata( $order, $params );
+		Epay_Paycenter_Logger::info(
+			'Authenticated Paycenter callback received',
+			array(
+				'order_id'      => $order_id,
+				'result_code'   => $params['ResultCode'],
+				'response_code' => $params['ResponseCode'],
+			)
+		);
 
 		// Verified success.
 		//
@@ -492,14 +441,14 @@ class Epay_Paycenter_Handler {
 		if ( $is_iris ) {
 			$note = sprintf(
 				/* translators: 1: approval code, 2: support reference id. */
-				__( 'Paycenter IRIS payment approved. Approval code: %1$s, Support Reference ID: %2$s.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				__( 'Paycenter IRIS payment approved. Approval code: %1$s, Support Reference ID: %2$s.', 'resilient-gateway-for-epay-paycenter' ),
 				'' !== $params['ApprovalCode'] ? $params['ApprovalCode'] : '-',
 				'' !== $params['SupportReferenceID'] ? $params['SupportReferenceID'] : '-'
 			);
 		} else {
 			$note = sprintf(
 				/* translators: 1: approval code, 2: package no, 3: support reference */
-				__( 'Paycenter card payment approved. Approval code: %1$s, Package: %2$s, Support Reference ID: %3$s.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				__( 'Paycenter card payment approved. Approval code: %1$s, Package: %2$s, Support Reference ID: %3$s.', 'resilient-gateway-for-epay-paycenter' ),
 				'' !== $params['ApprovalCode'] ? $params['ApprovalCode'] : '-',
 				'' !== $params['PackageNo'] ? $params['PackageNo'] : '-',
 				'' !== $params['SupportReferenceID'] ? $params['SupportReferenceID'] : '-'
@@ -515,7 +464,7 @@ class Epay_Paycenter_Handler {
 			if ( 'FPAN' === $pan_card_type || 'DPAN' === $pan_card_type ) {
 				$note .= ' ' . sprintf(
 					/* translators: %s: Google Pay PAN type - FPAN (real card number) or DPAN (device token). */
-					__( 'Paid via Google Pay (%s).', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					__( 'Paid via Google Pay (%s).', 'resilient-gateway-for-epay-paycenter' ),
 					$pan_card_type
 				);
 			}
@@ -524,18 +473,29 @@ class Epay_Paycenter_Handler {
 		$order->update_meta_data( '_epay_approval_code', $params['ApprovalCode'] );
 		$order->update_meta_data( '_epay_package_no', $params['PackageNo'] );
 		$order->update_meta_data( '_epay_trace_id', $params['TraceID'] );
-		$order->payment_complete( $params['TransactionId'] );
-		$order->add_order_note( $note );
-		// Remove all one-time secrets after successful verification: the
-		// entire open-attempt set plus the legacy single-value TranTicket.
-		// Any later (replayed) callback for a now-open reference is caught by
-		// the is_paid() idempotency guard before it can reach verification.
-		Epay_Paycenter_Gateway::clear_open_tickets( $order );
-		$order->save();
-
-		if ( function_exists( 'WC' ) && WC()->cart ) {
-			WC()->cart->empty_cart();
+		// A normal callback proves this reference, but another open browser tab
+		// can still settle later. This marker tells FOLLOW_UP not to classify
+		// every sibling locally merely because WooCommerce is already paid.
+		$order->update_meta_data( '_epay_follow_up_settled_reference', $received_reference );
+		try {
+			if ( ! $order->payment_complete( $params['TransactionId'] ) ) {
+				throw new RuntimeException( 'WooCommerce did not complete the paid transition.' );
+			}
+			Epay_Paycenter_Ticket_Audit::settle_success( $order_id, $received_reference );
+			$order->add_order_note( $note );
+			// Remove one-time secrets only after WooCommerce accepted the paid state.
+			Epay_Paycenter_Open_Tickets::clear( $order );
+			$order->save();
+		} catch ( Throwable $error ) {
+			Epay_Paycenter_Logger::error(
+				'Authenticated Paycenter approval could not be persisted locally; reconciliation will retry it.',
+				array( 'order_id' => $order_id )
+			);
+			wp_safe_redirect( $this->gateway->get_return_url( $order ) );
+			exit;
 		}
+
+		WC()->cart->empty_cart();
 
 		wp_safe_redirect( $this->gateway->get_return_url( $order ) );
 		exit;
@@ -548,8 +508,9 @@ class Epay_Paycenter_Handler {
 	 * Single-sourced here so the success path and the non-success
 	 * verifier cannot drift out of sync on the field set / ordering.
 	 *
-	 * @param string               $tran_ticket The order's stored TranTicket (HMAC key).
-	 * @param array<string,string> $params      Sanitized callback parameters.
+	 * @param string $tran_ticket The order's stored TranTicket (HMAC key).
+	 * @param array  $params Sanitized callback parameters.
+	 * @phpstan-param CallbackParams $params
 	 * @return array<string,string>
 	 */
 	private function build_hash_verify_fields( $tran_ticket, array $params ) {
@@ -580,23 +541,21 @@ class Epay_Paycenter_Handler {
 	 *             digest - the callback is cryptographically authentic.
 	 *   - false : a HashKey was present but does NOT match - the payload was
 	 *             forged or tampered with; the caller MUST refuse to act.
-	 *   - null  : no HashKey present (the documented decline case), or no
-	 *             stored TranTicket to verify against (e.g. it was already
-	 *             cleared after a prior successful settlement). Cryptographic
-	 *             verification is impossible, so the caller falls back to the
-	 *             MerchantReference secret (order id + per-order CSPRNG
-	 *             suffix) that handle_response() already enforced upstream.
+	 *   - null  : no HashKey or stored TranTicket. Cryptographic verification
+	 *             is impossible, so callers must leave all order state and
+	 *             metadata unchanged.
 	 *
-	 * @param WC_Order             $order       Order the callback maps to.
-	 * @param array<string,string> $params      Sanitized callback parameters.
-	 * @param string               $tran_ticket TranTicket of the attempt this callback
-	 *                                          belongs to, resolved from the open-ticket
-	 *                                          set by handle_response(). Falls back to the
-	 *                                          legacy single-value order meta when empty.
+	 * @param WC_Order $order       Order the callback maps to.
+	 * @param array    $params      Sanitized callback parameters.
+	 * @phpstan-param CallbackParams $params
+	 * @param string   $tran_ticket TranTicket of the attempt this callback
+	 *                                    belongs to, resolved from the open-ticket
+	 *                                    set by handle_response(). Falls back to the
+	 *                                    legacy single-value order meta when empty.
 	 * @return bool|null
 	 */
 	private function verify_nonsuccess_signature( $order, array $params, $tran_ticket = '' ) {
-		$received = isset( $params['HashKey'] ) ? (string) $params['HashKey'] : '';
+		$received = $params['HashKey'];
 		if ( '' === $received ) {
 			return null;
 		}
@@ -638,38 +597,35 @@ class Epay_Paycenter_Handler {
 	 * the session notice stack, so a session copy could only surface as
 	 * a stray message on some later page.
 	 *
-	 * @param WC_Order             $order       Paid order.
-	 * @param array<string,string> $params      Sanitized callback parameters.
-	 * @param string               $tran_ticket TranTicket of the matched attempt, if the
-	 *                                          open-ticket set still holds one.
+	 * @param WC_Order $order       Paid order.
+	 * @param array    $params      Sanitized callback parameters.
+	 * @phpstan-param CallbackParams $params
+	 * @param string   $tran_ticket TranTicket of the matched attempt, if the
+	 *                                    open-ticket set still holds one.
+	 * @return void
 	 */
 	private function record_recharge_attempt( $order, array $params, $tran_ticket = '' ) {
-		// Same authentication rule as the failure branch: refuse to write
-		// anything to the order when a HashKey is present but invalid. On a
-		// paid order the one-time TranTicket has already been cleared after
-		// the original settlement, so verify_nonsuccess_signature() usually
-		// returns null (unverifiable) here and we proceed on the
-		// MerchantReference match enforced upstream - the note/meta below
-		// only annotate the already-correct paid order and never change its
-		// status.
-		if ( false === $this->verify_nonsuccess_signature( $order, $params, $tran_ticket ) ) {
+		// An annotation is still a persistent mutation. Require the same
+		// cryptographic proof as every other callback write.
+		if ( true !== $this->verify_nonsuccess_signature( $order, $params, $tran_ticket ) ) {
 			Epay_Paycenter_Logger::error(
 				'Recharge-attempt callback on a paid order carried an invalid HashKey; ignored.',
 				array( 'order_id' => $order->get_id() )
 			);
 			return;
 		}
+		$params = $this->sanitize_callback_params( $params );
 
 		$is_recharge = ( '1048' === (string) $params['ResultCode'] );
 
 		$label = $is_recharge
-			? __( 'Paycenter §7 Test Case 3: Recharge attempt on an already-paid order (ResultCode 1048). Order status unchanged.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' )
-			: __( 'Paycenter: non-success callback received for an already-paid order. Order status unchanged.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+			? __( 'Paycenter §7 Test Case 3: Recharge attempt on an already-paid order (ResultCode 1048). Order status unchanged.', 'resilient-gateway-for-epay-paycenter' )
+			: __( 'Paycenter: non-success callback received for an already-paid order. Order status unchanged.', 'resilient-gateway-for-epay-paycenter' );
 
 		$order->add_order_note(
 			sprintf(
 				/* translators: 1: scenario label, 2: merchant reference, 3: result code, 4: result description, 5: response code, 6: support reference id. */
-				__( '%1$s MerchantReference: %2$s, ResultCode: %3$s, ResultDescription: %4$s, ResponseCode: %5$s, SupportReferenceID: %6$s.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				__( '%1$s MerchantReference: %2$s, ResultCode: %3$s, ResultDescription: %4$s, ResponseCode: %5$s, SupportReferenceID: %6$s.', 'resilient-gateway-for-epay-paycenter' ),
 				$label,
 				'' !== $params['MerchantReference'] ? $params['MerchantReference'] : '-',
 				'' !== $params['ResultCode'] ? $params['ResultCode'] : '-',
@@ -685,9 +641,9 @@ class Epay_Paycenter_Handler {
 		$order->update_meta_data( '_epay_recharge_attempt_support_reference_id', $params['SupportReferenceID'] );
 		$order->save();
 
-		Epay_Paycenter_Plugin::queue_order_notice(
+		Epay_Paycenter_Order_Notices::queue(
 			$order->get_id(),
-			__( 'This order has already been paid. Your new payment attempt was not processed and no additional charge was made.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			__( 'This order has already been paid. Your new payment attempt was not processed and no additional charge was made.', 'resilient-gateway-for-epay-paycenter' ),
 			'notice'
 		);
 
@@ -704,6 +660,8 @@ class Epay_Paycenter_Handler {
 	/**
 	 * Handle cancel backlink. The customer is returned here when pressing
 	 * Cancel on the Paycenter payment page.
+	 *
+	 * @return void
 	 */
 	private function handle_cancel() {
 		// Cancel is authenticated by a one-time token stored in order meta
@@ -723,35 +681,26 @@ class Epay_Paycenter_Handler {
 		}
 
 		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
+		if ( ! $order instanceof WC_Order ) {
 			wp_safe_redirect( wc_get_checkout_url() );
 			exit;
 		}
 
-		// Validate the token against EVERY still-open payment attempt, not
-		// only the most recent one. Each render of the pay-for-order page
-		// issues a fresh cancel token and overwrites the legacy
-		// `_epay_cancel_token` meta, so a customer who returns to an EARLIER
-		// bank page (Back/Forward, or a second tab) and presses Cancel sends
-		// the token of that earlier attempt. Comparing against the latest
-		// value alone made the click fail closed: the order stayed
-		// uncancelled and the shopper was bounced to the generic checkout
-		// page with no explanation - the same multi-attempt strand the
-		// open-ticket set was introduced to remove on the callback path.
-		//
-		// verify_cancel_token() scans the whole open-attempt set (the legacy
-		// single value folded in) without an early return, so lookup time
-		// does not reveal which attempt matched, and each comparison is
-		// itself timing-safe via hash_equals(). It also rejects an empty
-		// submitted token, so the previous '' === $expected guard is subsumed.
-		if ( ! Epay_Paycenter_Gateway::verify_cancel_token( $order, $token ) ) {
+		$cancelled_reference = Epay_Paycenter_Open_Tickets::reference_for_cancel_token( $order, $token );
+		if ( '' === $cancelled_reference ) {
 			Epay_Paycenter_Logger::error( 'Cancel token mismatch', array( 'order_id' => $order_id ) );
 			wp_safe_redirect( wc_get_checkout_url() );
 			exit;
 		}
 
+		Epay_Paycenter_Ticket_Audit::mark(
+			$order_id,
+			$cancelled_reference,
+			Epay_Paycenter_Ticket_Audit::STATUS_CANCELLED
+		);
+
 		if ( ! $order->has_status( array( 'cancelled', 'failed', 'processing', 'completed' ) ) ) {
-			$order->update_status( 'cancelled', __( 'Customer cancelled the Paycenter payment.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ) );
+			$order->update_status( 'cancelled', __( 'Customer cancelled the Paycenter payment.', 'resilient-gateway-for-epay-paycenter' ) );
 			$order->save();
 		}
 
@@ -760,9 +709,9 @@ class Epay_Paycenter_Handler {
 		// page, so the session-bound notice alone is not reliable.
 		// Queue the same text via the order-scoped transient so the
 		// pay-for-order page can re-surface it on the next render.
-		$cancel_notice = __( 'Payment was cancelled. Your cart is preserved if you wish to try again.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+		$cancel_notice = __( 'Payment was cancelled. Your cart is preserved if you wish to try again.', 'resilient-gateway-for-epay-paycenter' );
 		wc_add_notice( $cancel_notice, 'notice' );
-		Epay_Paycenter_Plugin::queue_order_notice( $order_id, $cancel_notice, 'notice' );
+		Epay_Paycenter_Order_Notices::queue( $order_id, $cancel_notice, 'notice' );
 		wp_safe_redirect( $order->get_checkout_payment_url() );
 		exit;
 	}
@@ -776,14 +725,15 @@ class Epay_Paycenter_Handler {
 	 * component of the MerchantReference.
 	 *
 	 * @param array $params Sanitized callback parameters.
+	 * @phpstan-param CallbackParams $params
 	 * @return int
 	 */
 	private function resolve_order_id_from_params( array $params ) {
-		$parameters = isset( $params['Parameters'] ) ? (string) $params['Parameters'] : '';
+		$parameters = $params['Parameters'];
 		if ( '' !== $parameters && preg_match( '/wc_order_id=(\d+)/', $parameters, $matches ) ) {
 			return (int) $matches[1];
 		}
-		$reference = isset( $params['MerchantReference'] ) ? (string) $params['MerchantReference'] : '';
+		$reference = $params['MerchantReference'];
 		if ( preg_match( '/^(\d+)/', $reference, $matches ) ) {
 			return (int) $matches[1];
 		}
@@ -791,55 +741,174 @@ class Epay_Paycenter_Handler {
 	}
 
 	/**
-	 * Collect and sanitize all response parameters from POST / GET input.
+	 * Collect callback parameters without transforming HMAC input.
 	 *
-	 * @return array<string,string>
+	 * @return CallbackParams
 	 */
 	private function collect_response_params() {
-		$fields = array(
-			'SupportReferenceID',
-			'ResultCode',
-			'ResultDescription',
-			'StatusFlag',
-			'ResponseCode',
-			'ResponseDescription',
-			'LanguageCode',
-			'MerchantReference',
-			'TransactionDateTime',
-			'TransactionId',
-			'CardType',
-			'PackageNo',
-			'ApprovalCode',
-			'RetrievalRef',
-			'AuthStatus',
-			'Parameters',
-			'HashKey',
-			'PaymentMethod',
-			'TraceID',
-			// Redirection Manual v3.1 §5: returned ONLY for Google Pay
-			// (digital-wallet) transactions - FPAN (real card number) or
-			// DPAN (device token). Empty for every other payment. Not part
-			// of the HashKey field set, so collecting it is verification-neutral.
-			'PanCardType',
+		return array(
+			'SupportReferenceID'  => $this->callback_param( 'SupportReferenceID' ),
+			'ResultCode'          => $this->callback_param( 'ResultCode' ),
+			'ResultDescription'   => $this->callback_param( 'ResultDescription' ),
+			'StatusFlag'          => $this->callback_param( 'StatusFlag' ),
+			'ResponseCode'        => $this->callback_param( 'ResponseCode' ),
+			'ResponseDescription' => $this->callback_param( 'ResponseDescription' ),
+			'LanguageCode'        => $this->callback_param( 'LanguageCode' ),
+			'MerchantReference'   => $this->callback_param( 'MerchantReference' ),
+			'TransactionDateTime' => $this->callback_param( 'TransactionDateTime' ),
+			'TransactionId'       => $this->callback_param( 'TransactionId' ),
+			'CardType'            => $this->callback_param( 'CardType' ),
+			'PackageNo'           => $this->callback_param( 'PackageNo' ),
+			'ApprovalCode'        => $this->callback_param( 'ApprovalCode' ),
+			'RetrievalRef'        => $this->callback_param( 'RetrievalRef' ),
+			'AuthStatus'          => $this->callback_param( 'AuthStatus' ),
+			'Parameters'          => $this->callback_param( 'Parameters' ),
+			'HashKey'             => $this->callback_param( 'HashKey' ),
+			'PaymentMethod'       => $this->callback_param( 'PaymentMethod' ),
+			'TraceID'             => $this->callback_param( 'TraceID' ),
+			// Redirection Manual v3.1 §5: returned only for Google Pay.
+			'PanCardType'         => $this->callback_param( 'PanCardType' ),
 		);
+	}
 
-		$params = array();
-		foreach ( $fields as $field ) {
-			// Nonce verification is not applicable: these callbacks arrive
-			// from the Paycenter back-end (not a browser session), and
-			// authenticity is enforced by the HashKey HMAC-SHA256 check
-			// further down the pipeline.
-			// phpcs:disable WordPress.Security.NonceVerification.Missing,WordPress.Security.NonceVerification.Recommended
-			if ( isset( $_POST[ $field ] ) && is_scalar( $_POST[ $field ] ) ) {
-				$params[ $field ] = sanitize_text_field( wp_unslash( (string) $_POST[ $field ] ) );
-			} elseif ( isset( $_GET[ $field ] ) && is_scalar( $_GET[ $field ] ) ) {
-				$params[ $field ] = sanitize_text_field( wp_unslash( (string) $_GET[ $field ] ) );
-			} else {
-				$params[ $field ] = '';
+	/**
+	 * Read one raw callback field without transforming HMAC input.
+	 *
+	 * @param string $field Callback field name.
+	 * @return string
+	 */
+	private function callback_param( $field ) {
+		// Nonce verification is not applicable: the HashKey authenticates the callback.
+		// phpcs:disable WordPress.Security.NonceVerification.Missing,WordPress.Security.NonceVerification.Recommended
+		if ( isset( $_POST[ $field ] ) && is_scalar( $_POST[ $field ] ) ) {
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- HMAC authenticates the unchanged bytes before display sanitization.
+			return wp_unslash( (string) $_POST[ $field ] );
+		}
+		if ( isset( $_GET[ $field ] ) && is_scalar( $_GET[ $field ] ) ) {
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- HMAC authenticates the unchanged bytes before display sanitization.
+			return wp_unslash( (string) $_GET[ $field ] );
+		}
+		// phpcs:enable
+
+		return '';
+	}
+
+	/**
+	 * Reject oversized or binary callback fields before order lookup or logging.
+	 *
+	 * @param array $params Raw callback parameters.
+	 * @phpstan-param CallbackParams $params
+	 * @return bool
+	 */
+	private function callback_params_are_valid( array $params ) {
+		foreach ( $params as $value ) {
+			if ( strlen( $value ) > self::MAX_CALLBACK_FIELD_BYTES || false !== strpos( $value, "\0" ) ) {
+				return false;
 			}
-			// phpcs:enable
+		}
+
+		return strlen( $params['MerchantReference'] ) <= 100
+			&& strlen( $params['HashKey'] ) <= 128
+			&& strlen( $params['Parameters'] ) <= 1024;
+	}
+
+	/**
+	 * Sanitize fields only after their raw values have passed HMAC validation.
+	 *
+	 * @param array $params Raw callback parameters.
+	 * @phpstan-param CallbackParams $params
+	 * @return CallbackParams
+	 */
+	private function sanitize_callback_params( array $params ) {
+		foreach ( $params as $field => $value ) {
+			$params[ $field ] = sanitize_text_field( $value );
 		}
 		return $params;
+	}
+
+	/**
+	 * Persist fields from a cryptographically authenticated response.
+	 *
+	 * @param WC_Order $order  Order receiving authenticated metadata.
+	 * @param array    $params Sanitized callback parameters.
+	 * @phpstan-param CallbackParams $params
+	 * @return void
+	 */
+	private function persist_callback_metadata( $order, array $params ) {
+		$meta = array(
+			'_epay_support_reference_id' => 'SupportReferenceID',
+			'_epay_merchant_reference'   => 'MerchantReference',
+			'_epay_result_code'          => 'ResultCode',
+			'_epay_result_description'   => 'ResultDescription',
+			'_epay_response_code'        => 'ResponseCode',
+			'_epay_response_description' => 'ResponseDescription',
+			'_epay_status_flag'          => 'StatusFlag',
+			'_epay_transaction_id'       => 'TransactionId',
+			'_epay_auth_status'          => 'AuthStatus',
+			'_epay_card_type'            => 'CardType',
+			'_epay_payment_method'       => 'PaymentMethod',
+			'_epay_pan_card_type'        => 'PanCardType',
+		);
+		foreach ( $meta as $meta_key => $field ) {
+			$order->update_meta_data( $meta_key, $params[ $field ] );
+		}
+		$order->update_meta_data( '_epay_last_callback_at', current_time( 'mysql', true ) );
+	}
+
+	/**
+	 * Return the request's source IP, trusting forwarding headers only explicitly.
+	 *
+	 * @return string
+	 */
+	private function callback_remote_ip() {
+		$remote_ip = '';
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		if ( isset( $_SERVER['REMOTE_ADDR'] ) && is_string( $_SERVER['REMOTE_ADDR'] ) ) {
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- FILTER_VALIDATE_IP below rejects invalid address bytes.
+			$candidate = wp_unslash( $_SERVER['REMOTE_ADDR'] );
+			$remote_ip = filter_var( $candidate, FILTER_VALIDATE_IP ) ? $candidate : '';
+		}
+
+		$trusted_proxies = apply_filters( 'epay_paycenter_trusted_proxy_ips', array() );
+		$trusted_proxies = is_array( $trusted_proxies ) ? $this->valid_ip_list( $trusted_proxies ) : array();
+		if ( '' !== $remote_ip && in_array( $remote_ip, $trusted_proxies, true ) ) {
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			if ( isset( $_SERVER['HTTP_CF_CONNECTING_IP'] ) && is_string( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) {
+				// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- FILTER_VALIDATE_IP below rejects invalid address bytes.
+				$candidate = wp_unslash( $_SERVER['HTTP_CF_CONNECTING_IP'] );
+				if ( filter_var( $candidate, FILTER_VALIDATE_IP ) ) {
+					return $candidate;
+				}
+			}
+		}
+
+		return $remote_ip;
+	}
+
+	/**
+	 * Keep only valid configured IP addresses.
+	 *
+	 * @param array<mixed> $values Potential IP addresses.
+	 * @return list<string>
+	 */
+	private function valid_ip_list( array $values ) {
+		$valid = array();
+		foreach ( $values as $value ) {
+			if ( is_string( $value ) && filter_var( $value, FILTER_VALIDATE_IP ) ) {
+				$valid[] = $value;
+			}
+		}
+		return array_values( array_unique( $valid ) );
+	}
+
+	/**
+	 * Redirect a rejected public callback without mutating WooCommerce state.
+	 *
+	 * @return never
+	 */
+	private function redirect_to_checkout() {
+		wp_safe_redirect( function_exists( 'wc_get_checkout_url' ) ? wc_get_checkout_url() : home_url( '/' ) );
+		exit;
 	}
 
 	/**
@@ -854,9 +923,8 @@ class Epay_Paycenter_Handler {
 	 * Field VALUES are intentionally omitted; only field names that were
 	 * transmitted are listed. The actual values are logged later, after
 	 * MerchantReference validation and HashKey-sensitive redaction.
-	 *
-	 * @param array<string,string> $params Sanitized callback parameters.
 	 */
+
 	/**
 	 * Consume one unit of an hourly logging budget.
 	 *
@@ -905,29 +973,20 @@ class Epay_Paycenter_Handler {
 		return true;
 	}
 
+	/**
+	 * Log the callback envelope without recording callback values.
+	 *
+	 * @param array $params Raw callback parameters.
+	 * @phpstan-param CallbackParams $params
+	 * @return void
+	 */
 	private function log_callback_envelope( array $params ) {
 		$method = 'UNKNOWN';
-		// REMOTE_ADDR / HTTP_USER_AGENT / HTTP_REFERER are read for
-		// diagnostic logging only; they are never used for authorisation.
 		// phpcs:disable WordPress.Security.NonceVerification.Missing,WordPress.Security.NonceVerification.Recommended
 		if ( isset( $_SERVER['REQUEST_METHOD'] ) && is_string( $_SERVER['REQUEST_METHOD'] ) ) {
 			$method = strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) );
 		}
 
-		$remote_ip = '';
-		if ( isset( $_SERVER['REMOTE_ADDR'] ) && is_string( $_SERVER['REMOTE_ADDR'] ) ) {
-			$remote_ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) );
-		}
-
-		$user_agent = '';
-		if ( isset( $_SERVER['HTTP_USER_AGENT'] ) && is_string( $_SERVER['HTTP_USER_AGENT'] ) ) {
-			$user_agent = substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 200 );
-		}
-
-		$referer = '';
-		if ( isset( $_SERVER['HTTP_REFERER'] ) && is_string( $_SERVER['HTTP_REFERER'] ) ) {
-			$referer = substr( esc_url_raw( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 );
-		}
 		// phpcs:enable
 
 		$fields_present = array();
@@ -941,9 +1000,6 @@ class Epay_Paycenter_Handler {
 			'Callback envelope',
 			array(
 				'method'         => $method,
-				'remote_ip'      => $remote_ip,
-				'user_agent'     => $user_agent,
-				'referer'        => $referer,
 				'fields_present' => $fields_present,
 				'field_count'    => count( $fields_present ),
 			)
@@ -972,8 +1028,9 @@ class Epay_Paycenter_Handler {
 	 * message regardless of what the bank returned, as disclosure of
 	 * anti-fraud involvement to the customer is explicitly forbidden.
 	 *
-	 * @param array<string,string> $params Sanitized callback parameters.
-	 * @return array{order_note:string,user_notice:string,status:string,notice_type:string}
+	 * @param array $params Sanitized callback parameters.
+	 * @phpstan-param CallbackParams $params
+	 * @return FailurePresentation
 	 */
 	private function describe_failure( array $params ) {
 		$result_code = (string) $params['ResultCode'];
@@ -982,15 +1039,16 @@ class Epay_Paycenter_Handler {
 			return $this->describe_issuer_decline( $params );
 		}
 
-		$scenario = $this->resolve_failure_scenario( $result_code );
+		$scenario    = $this->resolve_failure_scenario( $result_code );
+		$description = trim( $params['ResultDescription'] );
 
 		$order_note = sprintf(
 			/* translators: 1: scenario label, 2: merchant reference, 3: result code, 4: result description, 5: response code, 6: support reference id. */
-			__( '%1$s MerchantReference: %2$s, ResultCode: %3$s, ResultDescription: %4$s, ResponseCode: %5$s, SupportReferenceID: %6$s.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			__( '%1$s MerchantReference: %2$s, ResultCode: %3$s, ResultDescription: %4$s, ResponseCode: %5$s, SupportReferenceID: %6$s.', 'resilient-gateway-for-epay-paycenter' ),
 			$scenario['label'],
 			'' !== $params['MerchantReference'] ? $params['MerchantReference'] : '-',
 			$result_code,
-			'' !== trim( (string) $params['ResultDescription'] ) ? $params['ResultDescription'] : '-',
+			'' !== $description ? $params['ResultDescription'] : '-',
 			'' !== $params['ResponseCode'] ? $params['ResponseCode'] : '-',
 			'' !== $params['SupportReferenceID'] ? $params['SupportReferenceID'] : '-'
 		);
@@ -1018,27 +1076,19 @@ class Epay_Paycenter_Handler {
 	 * @return array{label:string,message:string}
 	 */
 	private function resolve_failure_scenario( $result_code ) {
-		// §5 "Failure to execute a transaction due to (technical)
-		// communication problem with the transaction processing
-		// system". Spec wording: "ResultCode = 50x (i.e. 500, 501
-		// etc.)". Regex covers the full 500-599 family without having
-		// to enumerate each code. preg_match is safer than intval()
-		// because ResultCode arrives as a string and may contain
-		// non-numeric payloads on unexpected responses.
+		// Section 5 groups the 500–599 result codes as processing communication failures.
 		if ( preg_match( '/^5\d{2}$/', (string) $result_code ) ) {
 			return array(
-				'label'   => __( 'Paycenter §5: Communication problem with the transaction processing system.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'message' => __( 'A temporary technical issue prevented the payment. Please try again in a few minutes.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'label'   => __( 'Paycenter §5: Communication problem with the transaction processing system.', 'resilient-gateway-for-epay-paycenter' ),
+				'message' => __( 'A temporary technical issue prevented the payment. Please try again in a few minutes.', 'resilient-gateway-for-epay-paycenter' ),
 			);
 		}
 
 		switch ( (string) $result_code ) {
-			// §5 "Failure to execute a transaction due to incorrect
-			// card details or a card not supported by the system."
 			case '981':
 				return array(
-					'label'   => __( 'Paycenter §5: Incorrect card details or unsupported card.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'message' => __( 'We could not validate your card details. Please check the card number, expiry date, and CVV, or try a different card.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					'label'   => __( 'Paycenter §5: Incorrect card details or unsupported card.', 'resilient-gateway-for-epay-paycenter' ),
+					'message' => __( 'We could not validate your card details. Please check the card number, expiry date, and CVV, or try a different card.', 'resilient-gateway-for-epay-paycenter' ),
 				);
 
 			// §5 "Attempt to send a transaction with the same
@@ -1049,8 +1099,8 @@ class Epay_Paycenter_Handler {
 			// embed verbatim in the operator-facing label.
 			case '1045':
 				return array(
-					'label'   => __( 'Paycenter §5: Stalled transaction - please verify the transaction status in the epay eCommerce AdminTool before retrying.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'message' => __( 'A previous payment attempt for this order is still being processed. Please wait a few seconds and try again.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					'label'   => __( 'Paycenter §5: Stalled transaction - please verify the transaction status in the epay eCommerce AdminTool before retrying.', 'resilient-gateway-for-epay-paycenter' ),
+					'message' => __( 'A previous payment attempt for this order is still being processed. Please wait a few seconds and try again.', 'resilient-gateway-for-epay-paycenter' ),
 				);
 
 			// §5 "Attempt to recharge a transaction (the request sent
@@ -1062,24 +1112,24 @@ class Epay_Paycenter_Handler {
 			// in handle_response() short-circuits paid orders).
 			case '1048':
 				return array(
-					'label'   => __( 'Paycenter §5: Recharge attempt (MerchantReference reused).', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'message' => __( 'The payment could not be processed because this payment reference has already been used. Please refresh the page and start a new payment. If you have already paid for this order, please contact us before paying again.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					'label'   => __( 'Paycenter §5: Recharge attempt (MerchantReference reused).', 'resilient-gateway-for-epay-paycenter' ),
+					'message' => __( 'The payment could not be processed because this payment reference has already been used. Please refresh the page and start a new payment. If you have already paid for this order, please contact us before paying again.', 'resilient-gateway-for-epay-paycenter' ),
 				);
 
 			// §5 "Failure to execute a transaction because the current
 			// transaction batch is being settled (batch closing)".
 			case '1072':
 				return array(
-					'label'   => __( 'Paycenter §5: Batch closing.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'message' => __( 'The payment provider is finalising today\'s transactions. Please try again in a few minutes.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					'label'   => __( 'Paycenter §5: Batch closing.', 'resilient-gateway-for-epay-paycenter' ),
+					'message' => __( 'The payment provider is finalising today\'s transactions. Please try again in a few minutes.', 'resilient-gateway-for-epay-paycenter' ),
 				);
 
 			// §5 "Failure to execute a transaction due to a temporary
 			// technical problem".
 			case '1':
 				return array(
-					'label'   => __( 'Paycenter §5: Temporary technical problem.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'message' => __( 'A temporary issue prevented the payment. Please try again in a few minutes.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					'label'   => __( 'Paycenter §5: Temporary technical problem.', 'resilient-gateway-for-epay-paycenter' ),
+					'message' => __( 'A temporary issue prevented the payment. Please try again in a few minutes.', 'resilient-gateway-for-epay-paycenter' ),
 				);
 
 			// §9 "Anti-fraud review". Disclosure of anti-fraud
@@ -1088,8 +1138,8 @@ class Epay_Paycenter_Handler {
 			// of what the bank returned in ResultDescription.
 			case '7001':
 				return array(
-					'label'   => __( 'Paycenter §9: Anti-fraud review - detail withheld from customer by spec.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'message' => __( 'Payment could not be authorised. Please try a different payment method.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					'label'   => __( 'Paycenter §9: Anti-fraud review - detail withheld from customer by spec.', 'resilient-gateway-for-epay-paycenter' ),
+					'message' => __( 'Payment could not be authorised. Please try a different payment method.', 'resilient-gateway-for-epay-paycenter' ),
 				);
 
 			// Any other non-zero ResultCode. Stored with the same
@@ -1100,8 +1150,8 @@ class Epay_Paycenter_Handler {
 			// during bank-side certification).
 			default:
 				return array(
-					'label'   => __( 'Paycenter §5: Unclassified failure.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'message' => __( 'Payment could not be completed. Please try again or use a different payment method.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					'label'   => __( 'Paycenter §5: Unclassified failure.', 'resilient-gateway-for-epay-paycenter' ),
+					'message' => __( 'Payment could not be completed. Please try again or use a different payment method.', 'resilient-gateway-for-epay-paycenter' ),
 				);
 		}
 	}
@@ -1142,11 +1192,11 @@ class Epay_Paycenter_Handler {
 		$is_iris_pending = ( $is_iris && '09' === strtoupper( $response_code ) );
 
 		if ( $is_iris_pending ) {
-			$scenario_label = __( 'Paycenter §5: IRIS payment initiated but not completed (ResponseCode 09). Order placed ON HOLD, not failed - it may still settle. Reconcile against the bank before cancelling or refunding.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+			$scenario_label = __( 'Paycenter §5: IRIS payment initiated but not completed (ResponseCode 09). Order placed ON HOLD, not failed - it may still settle. Reconcile against the bank before cancelling or refunding.', 'resilient-gateway-for-epay-paycenter' );
 		} elseif ( $is_iris ) {
-			$scenario_label = __( 'Paycenter §5: IRIS payment decline.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+			$scenario_label = __( 'Paycenter §5: IRIS payment decline.', 'resilient-gateway-for-epay-paycenter' );
 		} else {
-			$scenario_label = __( 'Paycenter §5: Issuer decline.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+			$scenario_label = __( 'Paycenter §5: Issuer decline.', 'resilient-gateway-for-epay-paycenter' );
 		}
 
 		// Everything except the IRIS-pending case is a genuine decline.
@@ -1155,7 +1205,7 @@ class Epay_Paycenter_Handler {
 
 		$order_note = sprintf(
 			/* translators: 1: scenario label, 2: merchant reference, 3: response code, 4: response description, 5: support reference id. */
-			__( '%1$s MerchantReference: %2$s, ResponseCode: %3$s, ResponseDescription: %4$s, SupportReferenceID: %5$s.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			__( '%1$s MerchantReference: %2$s, ResponseCode: %3$s, ResponseDescription: %4$s, SupportReferenceID: %5$s.', 'resilient-gateway-for-epay-paycenter' ),
 			$scenario_label,
 			'' !== $merchant_ref ? $merchant_ref : '-',
 			'' !== $response_code ? $response_code : '-',
@@ -1174,10 +1224,10 @@ class Epay_Paycenter_Handler {
 		if ( $is_iris ) {
 			switch ( strtoupper( $response_code ) ) {
 				case '05':
-					$user_notice = __( 'You cancelled the payment from your bank app. No charge was made. You can try again or choose a different payment method.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+					$user_notice = __( 'You cancelled the payment from your bank app. No charge was made. You can try again or choose a different payment method.', 'resilient-gateway-for-epay-paycenter' );
 					break;
 				case '06':
-					$user_notice = __( 'The IRIS payment could not be completed due to a technical issue. Please try again later or choose a different payment method.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+					$user_notice = __( 'The IRIS payment could not be completed due to a technical issue. Please try again later or choose a different payment method.', 'resilient-gateway-for-epay-paycenter' );
 					break;
 				case '09':
 					// §5: "An IRIS payment has been initiated but not
@@ -1187,15 +1237,17 @@ class Epay_Paycenter_Handler {
 					// twice, and IRIS refunds are not available through this
 					// integration (the bank returns ResponseCode 9167 for
 					// refund requests on IRIS transactions).
-					$user_notice = __( 'Your IRIS payment has been started but not yet confirmed. Your order is on hold and will update automatically once your bank confirms the transfer. Please do not pay again, or you may be charged twice. Contact us if you do not hear back.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+					$user_notice = Epay_Paycenter_Reconciliation::is_enabled()
+						? __( 'Your IRIS payment has started but is not yet confirmed. We will check its status automatically. Please do not pay again, or you may be charged twice. Contact us if you do not hear back.', 'resilient-gateway-for-epay-paycenter' )
+						: __( 'Your IRIS payment has started but is not yet confirmed. Please contact us so we can check the payment with ePay. Do not pay again, or you may be charged twice.', 'resilient-gateway-for-epay-paycenter' );
 					break;
 				case '68':
 					// IRIS-specific timeout: customer did not scan / confirm
 					// within the 5-minute QR-code window.
-					$user_notice = __( 'The IRIS payment timed out. The QR code expires after 5 minutes. Please try again.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+					$user_notice = __( 'The IRIS payment timed out. The QR code expires after 5 minutes. Please try again.', 'resilient-gateway-for-epay-paycenter' );
 					break;
 				case '70':
-					$user_notice = __( 'An unexpected error occurred with the IRIS service. Please try again later or choose a different payment method.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+					$user_notice = __( 'An unexpected error occurred with the IRIS service. Please try again later or choose a different payment method.', 'resilient-gateway-for-epay-paycenter' );
 					break;
 				default:
 					// Other ResponseCodes that may apply to IRIS — surface
@@ -1204,11 +1256,11 @@ class Epay_Paycenter_Handler {
 					if ( '' !== $response_description ) {
 						$user_notice = sprintf(
 							/* translators: %s: decline reason as returned by the bank for an IRIS payment, verbatim. */
-							__( 'Your IRIS payment was not completed. Reason: %s. Please try again or choose a different payment method.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+							__( 'Your IRIS payment was not completed. Reason: %s. Please try again or choose a different payment method.', 'resilient-gateway-for-epay-paycenter' ),
 							$response_description
 						);
 					} else {
-						$user_notice = __( 'Your IRIS payment was not completed. Please try again or choose a different payment method.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+						$user_notice = __( 'Your IRIS payment was not completed. Please try again or choose a different payment method.', 'resilient-gateway-for-epay-paycenter' );
 					}
 			}
 
@@ -1223,23 +1275,23 @@ class Epay_Paycenter_Handler {
 		if ( '' !== $response_description ) {
 			$user_notice = sprintf(
 				/* translators: %s: decline reason as returned by the card issuer, verbatim. */
-				__( 'Your card was declined by the issuer. Reason: %s. Please try a different card or contact your bank.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				__( 'Your card was declined by the issuer. Reason: %s. Please try a different card or contact your bank.', 'resilient-gateway-for-epay-paycenter' ),
 				$response_description
 			);
 		} else {
 			switch ( strtoupper( $response_code ) ) {
 				case '91':
 				case '96':
-					$user_notice = __( 'The card network is temporarily unavailable. Please try again in a few minutes.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+					$user_notice = __( 'The card network is temporarily unavailable. Please try again in a few minutes.', 'resilient-gateway-for-epay-paycenter' );
 					break;
 				case '68':
-					$user_notice = __( 'The payment timed out. Please try again.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+					$user_notice = __( 'The payment timed out. Please try again.', 'resilient-gateway-for-epay-paycenter' );
 					break;
 				case 'BE':
-					$user_notice = __( 'This card is not eligible for this type of payment. Please use a different card.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+					$user_notice = __( 'This card is not eligible for this type of payment. Please use a different card.', 'resilient-gateway-for-epay-paycenter' );
 					break;
 				default:
-					$user_notice = __( 'Your card was declined. Please try a different card or contact your bank.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+					$user_notice = __( 'Your card was declined. Please try a different card or contact your bank.', 'resilient-gateway-for-epay-paycenter' );
 			}
 		}
 

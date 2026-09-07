@@ -1,2 +1,6 @@
 <?php
-// Silence is golden.
+/**
+ * Prevent direct directory listing.
+ *
+ * @package EpayPaycenter
+ */

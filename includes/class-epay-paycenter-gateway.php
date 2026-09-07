@@ -1,49 +1,30 @@
 <?php
 /**
- * ePay Paycenter WooCommerce gateway.
+ * WooCommerce gateway for ePay Paycenter.
  *
  * @package EpayPaycenter
+ *
+ * Modified by the fork contributors on 2026-08-01, 2026-08-09,
+ * 2026-09-04, and 2026-09-07. See NOTICE.md for attribution.
  */
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Form-based redirect payment gateway for ePay Paycenter.
+ *
+ * @phpstan-import-type TicketResult from Epay_Paycenter_Ticketing
+ * @phpstan-import-type TicketRequest from Epay_Paycenter_Ticketing
+ * @phpstan-type FieldSection array{label:string,icon:string,intro?:string,fields:list<string>}
+ * @phpstan-type BankDataRow array{label:string,value:string,hint:string,detected?:bool}
  */
 class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 
 	const FORM_POST_URL = 'https://paycenter.piraeusbank.gr/redirection/pay.aspx';
 
 	/**
-	 * Maximum number of concurrent OPEN payment attempts retained per order.
-	 *
-	 * Each render of the pay-for-order page issues a fresh TranTicket +
-	 * MerchantReference + cancel token (see output_receipt_page()). We keep
-	 * the most recent N so a callback that completes an EARLIER attempt still
-	 * validates, while bounding order-meta growth from repeated reloads.
-	 *
-	 * @var int
-	 */
-	const MAX_OPEN_TICKETS = 5;
-
-	/**
-	 * Transaction type sent to the Ticketing Web Service. Always "02" (Sale):
-	 * the transaction is settled in the next batch with no further merchant
-	 * action.
-	 *
-	 * Preauthorization ("00") is deliberately NOT offered. Per Redirection
-	 * Manual §4 a preauthorization only COMMITS the amount - it "must be
-	 * completed by the merchant (via epay eCommerce AdminTool or a Web Service
-	 * call) within the days defined via the ExpirePreauth parameter for the
-	 * transaction to be settled". That completion call is
-	 * `RequestType = "SETTLE"` against a separate Web Service whose technical
-	 * specification the manual does not publish (it must be requested from
-	 * Euronet Merchant Services).
-	 *
-	 * Without that specification the plugin cannot capture a preauthorization,
-	 * so offering the option would mark orders as paid against funds that are
-	 * never collected and silently expire. The setting was removed in 1.0.35;
-	 * see the changelog. Do not reintroduce it without implementing capture.
+	 * Sale transactions settle in the next bank batch. Preauthorization requires
+	 * a separate capture workflow, which this gateway does not implement.
 	 *
 	 * @var string
 	 */
@@ -58,27 +39,12 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	const EXPIRE_PREAUTH = '0';
 
 	/**
-	 * Marker prefix identifying a stored password as an MD5 digest rather
-	 * than plaintext.
-	 *
-	 * The Ticketing Web Service only ever receives md5(password) - the
-	 * plaintext has no use after the settings form is submitted, so it is
-	 * not retained. Storing only the digest means a database leak, an
-	 * options export or a stray debug plugin surrenders a credential scoped
-	 * to this one integration instead of a password the merchant may have
-	 * reused elsewhere.
-	 *
-	 * The prefix exists so the digest is unambiguously distinguishable from
-	 * a legacy plaintext value: an installation upgraded from <= 1.0.35 still
-	 * holds plaintext until the next settings save, and get_password_digest()
-	 * transparently handles both.
-	 *
-	 * MD5 is mandated by the Redirection Manual for this field. It is not a
-	 * choice, and the digest must be treated as a bearer credential.
+	 * Distinguishes the bank-mandated MD5 digest from legacy plaintext settings.
+	 * The digest remains a bearer credential and must never be logged.
 	 *
 	 * @var string
 	 */
-	const PASSWORD_DIGEST_PREFIX = 'md5:';
+	const PASSWORD_DIGEST_PREFIX = Epay_Paycenter_Credentials::PASSWORD_DIGEST_PREFIX;
 
 	/**
 	 * Language code sent to Paycenter.
@@ -88,92 +54,49 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	protected $language_code;
 
 	/**
-	 * Whether the gateway is in test / live mode. Purely an operational flag
-	 * for UI; the endpoint URL is the same per the manual, but merchant
-	 * credentials differ.
-	 *
-	 * @var string
-	 */
-	protected $mode;
-
-	/**
-	 * Callback / response handler.
-	 *
-	 * @var Epay_Paycenter_Handler
-	 */
-	protected $handler;
-
-	/**
 	 * Constructor.
 	 */
 	public function __construct() {
 		$this->id                 = EPAY_PAYCENTER_GATEWAY_ID;
 		$this->has_fields         = true;
-		$this->method_title       = __( 'ePay Paycenter (Piraeus Bank)', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
-		$this->method_description = __( 'Accept credit / debit card payments through the ePay Paycenter Redirection service (Piraeus Bank / Euronet Merchant Services). Customers are redirected to a secure payment page hosted by the bank.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+		$this->method_title       = __( 'ePay Paycenter (Piraeus Bank)', 'resilient-gateway-for-epay-paycenter' );
+		$this->method_description = __( 'Accept credit / debit card payments through the ePay Paycenter Redirection service (Piraeus Bank / Euronet Merchant Services). Customers are redirected to a secure payment page hosted by the bank.', 'resilient-gateway-for-epay-paycenter' );
 
 		$this->supports = array( 'products' );
 
 		$this->init_form_fields();
 		$this->init_settings();
 
-		$this->title          = (string) $this->get_option( 'title' );
-		$this->description    = (string) $this->get_option( 'description' );
-		$this->mode           = (string) $this->get_option( 'mode', 'test' );
-		$this->language_code  = (string) $this->get_option( 'language_code', 'en-US' );
-
-		$this->handler = new Epay_Paycenter_Handler( $this );
+		$this->title         = (string) $this->get_option( 'title' );
+		$this->description   = (string) $this->get_option( 'description' );
+		$this->language_code = (string) $this->get_option( 'language_code', 'en-US' );
 
 		add_action(
 			'woocommerce_update_options_payment_gateways_' . $this->id,
-			array( $this, 'process_admin_options' )
+			function (): void {
+				$this->process_admin_options();
+			}
 		);
 		add_action(
 			'woocommerce_receipt_' . $this->id,
 			array( $this, 'output_receipt_page' )
 		);
-		// NOTE: the `woocommerce_api_<id>` listener is intentionally NOT
-		// registered here. It is bound at `plugins_loaded` time inside
-		// Epay_Paycenter_Plugin::dispatch_api_callback() so that the
-		// callback endpoint is always answerable even when WooCommerce
-		// has not instantiated the gateway yet (which, if it happens,
-		// causes WC_API::handle_api_requests() to fall through to its
-		// hard-coded `die( '-1' )` tail). Routing the dispatch through
-		// the bootstrapper removes that race entirely.
-	}
-
-	/**
-	 * Expose the Paycenter handler created in the constructor.
-	 *
-	 * Used by the plugin bootstrapper to dispatch WC-API callbacks
-	 * without having to reach into a private property.
-	 *
-	 * @return Epay_Paycenter_Handler
-	 */
-	public function get_handler() {
-		return $this->handler;
+		// The bootstrapper registers callbacks before WooCommerce creates gateways.
 	}
 
 	/**
 	 * Render payment fields shown when this method is selected at checkout.
 	 *
-	 * Outputs the accepted card-brands image followed by the merchant-
-	 * configured description. The image is displayed below the payment
-	 * method title (inside the content area that opens when the radio
-	 * button is selected) rather than inline in the label, so it can
-	 * render at its natural width (~400 px) and scale responsively on
-	 * mobile viewports.
+	 * A site may supply its own licensed icon through the
+	 * `epay_paycenter_icon` filter. The default is text-only.
 	 */
-	public function payment_fields() {
-		$icon_url = apply_filters(
-			'epay_paycenter_icon',
-			EPAY_PAYCENTER_PLUGIN_URL . 'assets/img/wp-cards.png'
-		);
+	public function payment_fields(): void {
+		$icon_url = $this->filtered_icon_url();
 
 		if ( $icon_url ) {
 			echo '<div class="epay-paycenter-icon">'
 				. '<img src="' . esc_url( $icon_url ) . '"'
-				. ' alt="' . esc_attr__( 'Accepted card brands', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ) . '"'
+				. ' alt="' . esc_attr__( 'Accepted card brands', 'resilient-gateway-for-epay-paycenter' ) . '"'
 				. ' class="epay-paycenter-icon__img"'
 				. ' />'
 				. '</div>';
@@ -187,20 +110,23 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	}
 
 	/**
-	 * Render the installments selector on the classic WooCommerce
-	 * checkout. The select element submits as `epay_installments` in
-	 * the checkout POST and is captured server-side in
-	 * `process_payment()` where it is *always* re-clamped against the
-	 * tier configuration evaluated for the actual order total. The
-	 * client-side HTML is therefore strictly cosmetic — tampering
-	 * with the dropdown options in DevTools cannot bypass the merchant
-	 * policy.
+	 * Resolve a filtered icon to an absolute HTTP(S) URL.
 	 *
-	 * WooCommerce Blocks checkout: this method is not invoked by the
-	 * Blocks framework (Blocks renders the payment method via JS).
-	 * Blocks-checkout customers receive the merchant-configured maximum
-	 * if reachable via tier rules — see class-epay-paycenter-blocks.php
-	 * for the Blocks-side picker (added in a follow-up release).
+	 * @return string
+	 */
+	private function filtered_icon_url() {
+		$icon_url = apply_filters( 'epay_paycenter_icon', '' );
+		if ( ! is_string( $icon_url ) || ! wp_http_validate_url( $icon_url ) ) {
+			return '';
+		}
+
+		return esc_url_raw( $icon_url );
+	}
+
+	/**
+	 * Render the classic-checkout installment selector. Its submitted value is
+	 * clamped against the order total and merchant rules before requesting a ticket.
+	 * Blocks uses a one-time payment without an installment selector.
 	 *
 	 * @return void
 	 */
@@ -219,15 +145,15 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		}
 
 		echo '<p class="form-row form-row-wide epay-installments-picker">';
-		echo '<label for="epay_installments">' . esc_html__( 'Installments (interest-free)', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ) . '</label>';
+		echo '<label for="epay_installments">' . esc_html__( 'Installments (interest-free)', 'resilient-gateway-for-epay-paycenter' ) . '</label>';
 		echo '<select name="epay_installments" id="epay_installments" class="epay-installments-picker__select">';
 		for ( $i = 1; $i <= $max; $i++ ) {
 			if ( 1 === $i ) {
-				$label = __( 'One-time payment', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+				$label = __( 'One-time payment', 'resilient-gateway-for-epay-paycenter' );
 			} else {
 				$label = sprintf(
 					/* translators: %d: number of monthly installments selected by the customer. */
-					_n( '%d installment', '%d installments', $i, 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					_n( '%d installment', '%d installments', $i, 'resilient-gateway-for-epay-paycenter' ),
 					$i
 				);
 			}
@@ -244,118 +170,136 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	/**
 	 * Define gateway settings fields.
 	 */
-	public function init_form_fields() {
+	public function init_form_fields(): void {
 		$this->form_fields = array(
-			'enabled'        => array(
-				'title'   => __( 'Enable / Disable', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'enabled'                     => array(
+				'title'   => __( 'Enable / Disable', 'resilient-gateway-for-epay-paycenter' ),
 				'type'    => 'checkbox',
-				'label'   => __( 'Enable ePay Paycenter payments', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'label'   => __( 'Enable ePay Paycenter payments', 'resilient-gateway-for-epay-paycenter' ),
 				'default' => 'no',
 			),
-			'title'          => array(
-				'title'       => __( 'Title', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'title'                       => array(
+				'title'       => __( 'Title', 'resilient-gateway-for-epay-paycenter' ),
 				'type'        => 'text',
-				'description' => __( 'Payment method title shown at checkout.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'default'     => __( 'Credit / Debit Card (Piraeus Bank)', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description' => __( 'Payment method title shown at checkout.', 'resilient-gateway-for-epay-paycenter' ),
+				'default'     => __( 'Credit / Debit Card (Piraeus Bank)', 'resilient-gateway-for-epay-paycenter' ),
 				'desc_tip'    => true,
 			),
-			'description'    => array(
-				'title'       => __( 'Description', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'description'                 => array(
+				'title'       => __( 'Description', 'resilient-gateway-for-epay-paycenter' ),
 				'type'        => 'textarea',
-				'description' => __( 'Description shown at checkout.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'default'     => __( 'Pay securely with your credit or debit card. You will be redirected to the Piraeus Bank secure payment page to complete your order.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description' => __( 'Description shown at checkout.', 'resilient-gateway-for-epay-paycenter' ),
+				'default'     => __( 'Pay securely with your credit or debit card. You will be redirected to the Piraeus Bank secure payment page to complete your order.', 'resilient-gateway-for-epay-paycenter' ),
 			),
-			'mode'           => array(
-				'title'       => __( 'Environment', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'mode'                        => array(
+				'title'       => __( 'Environment', 'resilient-gateway-for-epay-paycenter' ),
 				'type'        => 'select',
-				'description' => __( 'Use the test environment when validating test transactions. Credentials for test and live accounts are different and provided by Euronet Merchant Services.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description' => __( 'Use the test environment when validating test transactions. Credentials for test and live accounts are different and provided by Euronet Merchant Services.', 'resilient-gateway-for-epay-paycenter' ),
 				'default'     => 'test',
 				'options'     => array(
-					'test' => __( 'Test account', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'live' => __( 'Live account', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					'test' => __( 'Test account', 'resilient-gateway-for-epay-paycenter' ),
+					'live' => __( 'Live account', 'resilient-gateway-for-epay-paycenter' ),
 				),
 				'desc_tip'    => true,
 			),
-			'acquirer_id'    => array(
-				'title'       => __( 'Acquirer ID', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'acquirer_id'                 => array(
+				'title'       => __( 'Acquirer ID', 'resilient-gateway-for-epay-paycenter' ),
 				'type'        => 'text',
-				'description' => __( 'Numeric AcquirerId provided by Euronet Merchant Services.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description' => __( 'Numeric AcquirerId provided by Euronet Merchant Services.', 'resilient-gateway-for-epay-paycenter' ),
 				'desc_tip'    => true,
 			),
-			'merchant_id'    => array(
-				'title'       => __( 'Merchant ID', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'merchant_id'                 => array(
+				'title'       => __( 'Merchant ID', 'resilient-gateway-for-epay-paycenter' ),
 				'type'        => 'text',
-				'description' => __( 'Numeric MerchantId provided by Euronet Merchant Services.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description' => __( 'Numeric MerchantId provided by Euronet Merchant Services.', 'resilient-gateway-for-epay-paycenter' ),
 				'desc_tip'    => true,
 			),
-			'pos_id'         => array(
-				'title'       => __( 'POS ID', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'pos_id'                      => array(
+				'title'       => __( 'POS ID', 'resilient-gateway-for-epay-paycenter' ),
 				'type'        => 'text',
-				'description' => __( 'Numeric PosId provided by Euronet Merchant Services.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description' => __( 'Numeric PosId provided by Euronet Merchant Services.', 'resilient-gateway-for-epay-paycenter' ),
 				'desc_tip'    => true,
 			),
-			'username'       => array(
-				'title'       => __( 'Username', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'username'                    => array(
+				'title'       => __( 'Username', 'resilient-gateway-for-epay-paycenter' ),
 				'type'        => 'text',
-				'description' => __( 'Username for the Ticketing Web Service (max. 50 characters).', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description' => __( 'Username for the Ticketing Web Service (max. 50 characters).', 'resilient-gateway-for-epay-paycenter' ),
 				'desc_tip'    => true,
 			),
-			'password'       => array(
-				'title'       => __( 'Password', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'password'                    => array(
+				'title'       => __( 'Password', 'resilient-gateway-for-epay-paycenter' ),
 				'type'        => 'password',
-				'description' => __( 'Password for the Ticketing Web Service, as issued by Euronet Merchant Services. Only its MD5 digest is stored — the specification requires the digest to be what is transmitted, so the plain password is never written to the database. The field therefore always displays empty: leave it blank to keep the current credential, or type a new password to replace it.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description' => __( 'Password for the Ticketing Web Service, as issued by Euronet Merchant Services. Only its MD5 digest is stored — the specification requires the digest to be what is transmitted, so the plain password is never written to the database. The field therefore always displays empty: leave it blank to keep the current credential, or type a new password to replace it.', 'resilient-gateway-for-epay-paycenter' ),
 				'desc_tip'    => true,
-				'placeholder' => __( 'Leave blank to keep the saved password', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'placeholder' => __( 'Leave blank to keep the saved password', 'resilient-gateway-for-epay-paycenter' ),
 			),
-			'language_code'  => array(
-				'title'       => __( 'Payment page language', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'type'        => 'select',
-				'default'     => 'en-US',
-				'options'     => array(
-					'el-GR' => __( 'Greek', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'en-US' => __( 'English', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'ru-RU' => __( 'Russian', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-					'de-DE' => __( 'German', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'language_code'               => array(
+				'title'   => __( 'Payment page language', 'resilient-gateway-for-epay-paycenter' ),
+				'type'    => 'select',
+				'default' => 'en-US',
+				'options' => array(
+					'el-GR' => __( 'Greek', 'resilient-gateway-for-epay-paycenter' ),
+					'en-US' => __( 'English', 'resilient-gateway-for-epay-paycenter' ),
+					'ru-RU' => __( 'Russian', 'resilient-gateway-for-epay-paycenter' ),
+					'de-DE' => __( 'German', 'resilient-gateway-for-epay-paycenter' ),
 				),
 			),
-			'installments'   => array(
-				'title'       => __( 'Installments support', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'installments'                => array(
+				'title'       => __( 'Installments support', 'resilient-gateway-for-epay-paycenter' ),
 				'type'        => 'checkbox',
-				'label'       => __( 'Offer installments when allowed by the merchant agreement.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'label'       => __( 'Offer installments when allowed by the merchant agreement.', 'resilient-gateway-for-epay-paycenter' ),
 				'default'     => 'no',
-				'description' => __( 'Requires activation by Euronet Merchant Services. Installments are not supported for IRIS payments.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description' => __( 'Requires activation by Euronet Merchant Services. Installments are not supported for IRIS payments.', 'resilient-gateway-for-epay-paycenter' ),
 			),
-			'max_installments' => array(
-				'title'       => __( 'Maximum installments', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'type'        => 'number',
-				'default'     => 0,
+			'max_installments'            => array(
+				'title'             => __( 'Maximum installments', 'resilient-gateway-for-epay-paycenter' ),
+				'type'              => 'number',
+				'default'           => 0,
 				'custom_attributes' => array(
 					'min' => 0,
 					'max' => 36,
 				),
-				'description' => __( 'Maximum number of installments offered to the customer. Use 0 or 1 to disable.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description'       => __( 'Maximum number of installments offered to the customer. Use 0 or 1 to disable.', 'resilient-gateway-for-epay-paycenter' ),
 			),
 			'min_amount_for_installments' => array(
-				'title'       => __( 'Minimum order total for installments', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'type'        => 'number',
-				'default'     => 0,
+				'title'             => __( 'Minimum order total for installments', 'resilient-gateway-for-epay-paycenter' ),
+				'type'              => 'number',
+				'default'           => 0,
 				'custom_attributes' => array(
 					'min'  => 0,
 					'step' => '0.01',
 				),
-				'description' => __( 'Orders below this amount will not offer installments.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description'       => __( 'Orders below this amount will not offer installments.', 'resilient-gateway-for-epay-paycenter' ),
 			),
-			'installments_tiers' => array(
-				'title'       => __( 'Tiered max installments by amount (interest-free)', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'installments_tiers'          => array(
+				'title'       => __( 'Tiered max installments by amount (interest-free)', 'resilient-gateway-for-epay-paycenter' ),
 				'type'        => 'textarea',
 				'default'     => '',
 				'placeholder' => '50:3, 100:6, 200:12',
-				'description' => __( 'Optional tiered configuration. Format: "amount:max,amount:max,...". Example: "50:3, 100:6, 200:12" means orders >= 50 offer up to 3 installments, >= 100 up to 6, >= 200 up to 12. Per Piraeus Bank policy these installments are always interest-free for the customer (the merchant absorbs the bank commission). When this field is filled, it overrides the flat Maximum installments value above. Empty = use the flat maximum.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'description' => __( 'Optional tiered configuration. Format: "amount:max,amount:max,...". Example: "50:3, 100:6, 200:12" means orders >= 50 offer up to 3 installments, >= 100 up to 6, >= 200 up to 12. Per Piraeus Bank policy these installments are always interest-free for the customer (the merchant absorbs the bank commission). When this field is filled, it overrides the flat Maximum installments value above. Empty = use the flat maximum.', 'resilient-gateway-for-epay-paycenter' ),
 			),
-			'debug'          => array(
-				'title'   => __( 'Logging', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'follow_up_enabled'           => array(
+				'title'       => __( 'Automatic payment recovery', 'resilient-gateway-for-epay-paycenter' ),
+				'type'        => 'checkbox',
+				'label'       => __( 'Use ePay FOLLOW_UP to reconcile missing callbacks', 'resilient-gateway-for-epay-paycenter' ),
+				'default'     => 'no',
+				'description' => __( 'First verify the channel with a known successful order in the diagnostic card above. Once enabled, the plugin checks unresolved attempts for up to 48 hours and marks an order paid only after an exact approved bank response.', 'resilient-gateway-for-epay-paycenter' ),
+			),
+			'follow_up_hold_minutes'      => array(
+				'title'             => __( 'ePay stock reservation', 'resilient-gateway-for-epay-paycenter' ),
+				'type'              => 'number',
+				'default'           => 240,
+				'custom_attributes' => array(
+					'min'  => 60,
+					'max'  => 1440,
+					'step' => 1,
+				),
+				'description'       => __( 'Minutes to reserve stock for unpaid ePay orders (default: 240 / four hours). Follow-up checks continue for 48 hours even after stock is released.', 'resilient-gateway-for-epay-paycenter' ),
+			),
+			'debug'                       => array(
+				'title'   => __( 'Logging', 'resilient-gateway-for-epay-paycenter' ),
 				'type'    => 'checkbox',
-				'label'   => __( 'Enable debug logging to WooCommerce → Status → Logs (source: epay-paycenter). Credentials are never logged.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'label'   => __( 'Enable debug logging to WooCommerce → Status → Logs (source: epay-paycenter). Credentials are never logged.', 'resilient-gateway-for-epay-paycenter' ),
 				'default' => 'no',
 			),
 		);
@@ -370,7 +314,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * POST fields (keyed by `woocommerce_{$id}_{$field}`) continue to be
 	 * sanitised and persisted by WooCommerce core.
 	 */
-	public function admin_options() {
+	public function admin_options(): void {
 		// Defence-in-depth: WooCommerce already gates this screen behind
 		// `manage_woocommerce`, but re-check here so rendering never runs
 		// for unprivileged callers if the method is invoked directly.
@@ -378,27 +322,23 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			return;
 		}
 
-		$sections  = $this->get_field_sections();
-		$mode      = (string) $this->get_option( 'mode', 'test' );
-		$is_live      = ( 'live' === $mode );
-		$version      = defined( 'EPAY_PAYCENTER_VERSION' ) ? EPAY_PAYCENTER_VERSION : '';
-		$logo_url     = EPAY_PAYCENTER_PLUGIN_URL . 'assets/img/epay.jpg';
+		$sections = $this->get_field_sections();
+		$mode     = (string) $this->get_option( 'mode', 'test' );
+		$is_live  = ( 'live' === $mode );
+		$version  = defined( 'EPAY_PAYCENTER_VERSION' ) ? EPAY_PAYCENTER_VERSION : '';
 		?>
 		<div class="epay-admin">
 
 			<header class="epay-admin__header" role="banner">
-				<div class="epay-admin__logo" aria-hidden="true">
-					<img src="<?php echo esc_url( $logo_url ); ?>" alt="" width="180" height="60" />
-				</div>
 				<div class="epay-admin__heading">
 					<h2 class="epay-admin__title">
-						<?php echo esc_html__( 'ePay Paycenter for WooCommerce', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+						<?php echo esc_html__( 'ePay Paycenter for WooCommerce', 'resilient-gateway-for-epay-paycenter' ); ?>
 						<?php if ( '' !== $version ) : ?>
 							<span class="epay-admin__version">v<?php echo esc_html( $version ); ?></span>
 						<?php endif; ?>
 					</h2>
 					<p class="epay-admin__subtitle">
-						<?php echo esc_html__( 'Accept credit and debit card payments through the Piraeus Bank / Euronet Merchant Services secure Redirection service.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+						<?php echo esc_html__( 'Accept credit and debit card payments through the Piraeus Bank / Euronet Merchant Services secure Redirection service.', 'resilient-gateway-for-epay-paycenter' ); ?>
 					</p>
 				</div>
 			</header>
@@ -423,7 +363,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 								</h3>
 								<?php if ( 'credentials' === $section_key ) : ?>
 									<span class="epay-env-badge epay-env-badge--<?php echo esc_attr( $is_live ? 'live' : 'test' ); ?>">
-										<?php echo esc_html( $is_live ? __( 'Live account', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ) : __( 'Test account', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ) ); ?>
+										<?php echo esc_html( $is_live ? __( 'Live account', 'resilient-gateway-for-epay-paycenter' ) : __( 'Test account', 'resilient-gateway-for-epay-paycenter' ) ); ?>
 									</span>
 								<?php endif; ?>
 							</div>
@@ -434,13 +374,13 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 								<table class="form-table" role="presentation">
 									<?php
 									// generate_settings_html() is a WooCommerce core method that
-								// internally escapes every field value with esc_attr() / esc_html().
-								// All field definitions come from our hard-coded init_form_fields()
-								// map, not from user input. wp_kses_post() cannot be used here
-								// because it strips WooCommerce-specific attributes (data-tip, etc.)
-								// that break the admin UI.
+									// internally escapes every field value with esc_attr() / esc_html().
+									// All field definitions come from our hard-coded init_form_fields()
+									// map, not from user input. wp_kses_post() cannot be used here
+									// because it strips WooCommerce-specific attributes (data-tip, etc.)
+									// that break the admin UI.
 								// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-								echo $this->generate_settings_html( $section_fields, false );
+									echo $this->generate_settings_html( $section_fields, false );
 									?>
 								</table>
 							</div>
@@ -455,6 +395,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 						// directly under the credentials they complement.
 						if ( 'credentials' === $section_key ) {
 							$this->render_bank_integration_card();
+							$this->render_follow_up_diagnostics_card();
 							$this->render_callback_diagnostics_card();
 						}
 						?>
@@ -462,13 +403,13 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 
 				</div>
 
-				<aside class="epay-admin__sidebar" aria-label="<?php echo esc_attr__( 'Integration resources', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>">
+				<aside class="epay-admin__sidebar" aria-label="<?php echo esc_attr__( 'Integration resources', 'resilient-gateway-for-epay-paycenter' ); ?>">
 
 					<section class="epay-card" aria-labelledby="epay-resources-title">
 						<div class="epay-card__header">
 							<span class="dashicons dashicons-sos" aria-hidden="true"></span>
 							<h3 id="epay-resources-title" class="epay-card__title">
-								<?php echo esc_html__( 'Resources', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+								<?php echo esc_html__( 'Resources', 'resilient-gateway-for-epay-paycenter' ); ?>
 							</h3>
 						</div>
 						<div class="epay-card__body">
@@ -476,19 +417,19 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 								<li>
 									<a href="<?php echo esc_url( admin_url( 'admin.php?page=wc-status&tab=logs' ) ); ?>">
 										<span class="dashicons dashicons-list-view" aria-hidden="true"></span>
-										<?php echo esc_html__( 'WooCommerce → Status → Logs', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+										<?php echo esc_html__( 'WooCommerce → Status → Logs', 'resilient-gateway-for-epay-paycenter' ); ?>
 									</a>
 								</li>
 								<li>
 									<a href="<?php echo esc_url( admin_url( 'admin.php?page=wc-orders&_payment_method=' . rawurlencode( EPAY_PAYCENTER_GATEWAY_ID ) ) ); ?>">
 										<span class="dashicons dashicons-cart" aria-hidden="true"></span>
-										<?php echo esc_html__( 'Orders paid via Paycenter', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+										<?php echo esc_html__( 'Orders paid via Paycenter', 'resilient-gateway-for-epay-paycenter' ); ?>
 									</a>
 								</li>
 								<li>
 									<a href="<?php echo esc_url( admin_url( 'plugins.php' ) ); ?>">
 										<span class="dashicons dashicons-admin-plugins" aria-hidden="true"></span>
-										<?php echo esc_html__( 'Installed plugins', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+										<?php echo esc_html__( 'Installed plugins', 'resilient-gateway-for-epay-paycenter' ); ?>
 									</a>
 								</li>
 							</ul>
@@ -499,15 +440,15 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 						<div class="epay-card__header">
 							<span class="dashicons dashicons-info" aria-hidden="true"></span>
 							<h3 id="epay-about-title" class="epay-card__title">
-								<?php echo esc_html__( 'About this plugin', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+								<?php echo esc_html__( 'About this plugin', 'resilient-gateway-for-epay-paycenter' ); ?>
 							</h3>
 						</div>
 						<div class="epay-card__body">
 							<p class="epay-footnote">
-								<?php echo esc_html__( 'Implements the official ePay Paycenter Redirection v2.9 specification: SOAP ticketing, HMAC-SHA256 response verification, HPOS and Checkout Blocks support.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+								<?php echo esc_html__( 'Implements the official ePay Paycenter Redirection v2.9 specification: SOAP ticketing, HMAC-SHA256 response verification, HPOS and Checkout Blocks support.', 'resilient-gateway-for-epay-paycenter' ); ?>
 							</p>
 							<p class="epay-footnote">
-								<?php echo esc_html__( 'Published under GPL-2.0-or-later by WebHosting4U. "ePay", "Paycenter" and the Piraeus Bank payment mark are trademarks of Piraeus Bank S.A. / Euronet Merchant Services.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+								<?php echo esc_html__( 'Published under GPL-2.0-or-later by WebHosting4U. "ePay", "Paycenter" and the Piraeus Bank payment mark are trademarks of Piraeus Bank S.A. / Euronet Merchant Services.', 'resilient-gateway-for-epay-paycenter' ); ?>
 							</p>
 						</div>
 					</section>
@@ -525,34 +466,40 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * schema (and save path via `process_admin_options()`) stays single-
 	 * sourced in `init_form_fields()`.
 	 *
-	 * @return array<string,array<string,mixed>>
+	 * @return array<string,FieldSection>
 	 */
 	private function get_field_sections() {
 		return array(
-			'general'      => array(
-				'label'  => __( 'General', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'general'        => array(
+				'label'  => __( 'General', 'resilient-gateway-for-epay-paycenter' ),
 				'icon'   => 'admin-settings',
 				'fields' => array( 'enabled', 'title', 'description' ),
 			),
-			'credentials'  => array(
-				'label'  => __( 'Merchant credentials', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'credentials'    => array(
+				'label'  => __( 'Merchant credentials', 'resilient-gateway-for-epay-paycenter' ),
 				'icon'   => 'lock',
-				'intro'  => __( 'Credentials are provided by Euronet Merchant Services. Test and live accounts use separate credential sets.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'intro'  => __( 'Credentials are provided by Euronet Merchant Services. Test and live accounts use separate credential sets.', 'resilient-gateway-for-epay-paycenter' ),
 				'fields' => array( 'mode', 'acquirer_id', 'merchant_id', 'pos_id', 'username', 'password' ),
 			),
-			'payment'      => array(
-				'label'  => __( 'Payment behaviour', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'payment'        => array(
+				'label'  => __( 'Payment behaviour', 'resilient-gateway-for-epay-paycenter' ),
 				'icon'   => 'cart',
 				'fields' => array( 'language_code' ),
 			),
-			'installments' => array(
-				'label'  => __( 'Installments', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'installments'   => array(
+				'label'  => __( 'Installments', 'resilient-gateway-for-epay-paycenter' ),
 				'icon'   => 'chart-line',
-				'intro'  => __( 'Activation by Euronet Merchant Services is required. Installments are interest-free for the customer (the merchant absorbs the bank commission). Installments are not available for IRIS payments.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'intro'  => __( 'Activation by Euronet Merchant Services is required. Installments are interest-free for the customer (the merchant absorbs the bank commission). Installments are not available for IRIS payments.', 'resilient-gateway-for-epay-paycenter' ),
 				'fields' => array( 'installments', 'max_installments', 'min_amount_for_installments', 'installments_tiers' ),
 			),
-			'advanced'     => array(
-				'label'  => __( 'Advanced & logging', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'reconciliation' => array(
+				'label'  => __( 'Missing-response recovery', 'resilient-gateway-for-epay-paycenter' ),
+				'icon'   => 'backup',
+				'intro'  => __( 'These controls recover payments that ePay later resolves through DIAS but cannot send back through the normal callback flow.', 'resilient-gateway-for-epay-paycenter' ),
+				'fields' => array( 'follow_up_enabled', 'follow_up_hold_minutes' ),
+			),
+			'advanced'       => array(
+				'label'  => __( 'Advanced & logging', 'resilient-gateway-for-epay-paycenter' ),
 				'icon'   => 'admin-tools',
 				'fields' => array( 'debug' ),
 			),
@@ -569,7 +516,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	private function subset_fields( array $keys ) {
 		$subset = array();
 		foreach ( $keys as $key ) {
-			if ( is_string( $key ) && isset( $this->form_fields[ $key ] ) ) {
+			if ( isset( $this->form_fields[ $key ] ) ) {
 				$subset[ $key ] = $this->form_fields[ $key ];
 			}
 		}
@@ -587,18 +534,14 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * Values are derived from the live WordPress / WooCommerce
 	 * configuration - none come from user input.
 	 *
-	 * @return array<string,mixed>
+	 * @return array{urls:array<string,BankDataRow>,server:array<string,BankDataRow>}
 	 */
 	private function collect_bank_integration_data() {
 		$home     = home_url( '/' );
 		$callback = add_query_arg( 'wc-api', EPAY_PAYCENTER_GATEWAY_ID, home_url( '/' ) );
 		$checkout = function_exists( 'wc_get_checkout_url' ) ? wc_get_checkout_url() : $home;
 
-		// `$_SERVER['SERVER_ADDR']` is the local address WordPress is bound
-		// to. Behind a reverse proxy / load balancer this is NOT necessarily
-		// the outbound IP seen by Paycenter, which is why it is rendered
-		// with an explicit caveat in the UI. Value is filtered to IPv4 /
-		// IPv6 characters before echo.
+		// SERVER_ADDR is the inbound address; the bank needs the outbound address.
 		$server_addr = '';
 		if ( isset( $_SERVER['SERVER_ADDR'] ) && is_scalar( $_SERVER['SERVER_ADDR'] ) ) {
 			// Two-stage sanitization: WordPress `sanitize_text_field()` to
@@ -612,56 +555,38 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 
 		$urls = array(
 			'website'  => array(
-				'label' => __( 'Website URL', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'label' => __( 'Website URL', 'resilient-gateway-for-epay-paycenter' ),
 				'value' => $home,
-				'hint'  => __( 'Your site origin. This is the URL from which test or live transactions are initiated.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'hint'  => __( 'Your site origin. This is the URL from which test or live transactions are initiated.', 'resilient-gateway-for-epay-paycenter' ),
 			),
 			'referrer' => array(
-				'label' => __( 'Referrer URL', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'label' => __( 'Referrer URL', 'resilient-gateway-for-epay-paycenter' ),
 				'value' => $checkout,
-				'hint'  => __( 'Page that initiates the payment. Paycenter receives the POST from the auto-submit form rendered on the order pay page that follows checkout.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'hint'  => __( 'Page that initiates the payment. Paycenter receives the POST from the auto-submit form rendered on the order pay page that follows checkout.', 'resilient-gateway-for-epay-paycenter' ),
 			),
 			'success'  => array(
-				'label' => __( 'Success URL', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'label' => __( 'Success URL', 'resilient-gateway-for-epay-paycenter' ),
 				'value' => $callback,
-				'hint'  => __( 'Paycenter posts the successful transaction response to this URL. The plugin verifies it via HMAC-SHA256 HashKey before marking the order paid.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'hint'  => __( 'Paycenter posts the successful transaction response to this URL. The plugin verifies it via HMAC-SHA256 HashKey before marking the order paid.', 'resilient-gateway-for-epay-paycenter' ),
 			),
 			'failure'  => array(
-				'label' => __( 'Failure URL', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'label' => __( 'Failure URL', 'resilient-gateway-for-epay-paycenter' ),
 				'value' => $callback,
-				'hint'  => __( 'Paycenter posts a failed-transaction response to this URL. The plugin handler uses ResultCode / StatusFlag to flag the order as failed.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'hint'  => __( 'Paycenter posts a failed-transaction response to this URL. The plugin handler uses ResultCode / StatusFlag to flag the order as failed.', 'resilient-gateway-for-epay-paycenter' ),
 			),
 			'backlink' => array(
-				'label' => __( 'Backlink URL', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'label' => __( 'Backlink URL', 'resilient-gateway-for-epay-paycenter' ),
 				'value' => $callback,
-				'hint'  => __( 'URL the customer is sent to when pressing "Cancel" on the Paycenter page. The plugin appends a per-order token automatically via the ParamBackLink field at ticket creation.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'hint'  => __( 'URL the customer is sent to when pressing "Cancel" on the Paycenter page. The plugin appends a per-order token automatically via the ParamBackLink field at ticket creation.', 'resilient-gateway-for-epay-paycenter' ),
 			),
 		);
 
-		// The address ePay / Euronet must register is the one this server uses
-		// on its OUTBOUND call to the Ticketing Web Service. `SERVER_ADDR` above
-		// answers a different question - the address the site is SERVED on - and
-		// behind a reverse proxy, load balancer, NAT or on a multi-IP host the
-		// two differ. Reported from the field: a host serving on x.x.x.150 while
-		// egressing from x.x.x.167. Handing the bank the inbound address makes
-		// every ticket request fail with no error the merchant can interpret.
-		//
-		// The plugin deliberately does not guess. Only a request to an outside
-		// host can reveal the egress address, and this build makes no such call,
-		// so the row is left empty with instructions rather than filled with a
-		// confident wrong value - an empty field prompts action, a wrong one
-		// gets copied straight into the bank's form. A managed host or agency
-		// that knows the value can publish it through the filter below.
+		// Egress IP cannot be inferred from SERVER_ADDR behind NAT or a proxy.
+		// Hosts may supply a confirmed outbound IP through this filter.
 		$outbound_ip = apply_filters( 'epay_paycenter_outbound_ip', '' );
 		$outbound_ip = is_scalar( $outbound_ip ) ? trim( (string) $outbound_ip ) : '';
 
-		// Reject anything that is not a syntactically valid address outright.
-		// The character allow-list applied to SERVER_ADDR above would instead
-		// STRIP the offending characters, turning a malformed filter return into
-		// a string that still looks like an IP (e.g. '<script>1.2.3.4' becomes
-		// 'cae1c1.2.3.4'). This value exists to be copied into the bank's form,
-		// so a wrong-but-plausible address is the worst possible output: better
-		// to show nothing and let the instructions below take over.
+		// Display only a valid address that the merchant can safely copy.
 		if ( '' !== $outbound_ip && ! filter_var( $outbound_ip, FILTER_VALIDATE_IP ) ) {
 			$outbound_ip = '';
 		}
@@ -669,19 +594,19 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		$server = array(
 			'outbound_ip' => array(
 				'detected' => ( '' !== $outbound_ip ),
-				'label' => __( 'Outbound IP (the value ePay needs)', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'value' => ( '' !== $outbound_ip ) ? $outbound_ip : __( 'Not detected automatically', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'hint'  => __( 'The address this server uses when it calls the Paycenter ticketing service, and the one to register with Euronet Merchant Services. WordPress cannot read it, because only a request to an outside host reveals it. To find it, run  curl -4 https://api.ipify.org  on the server over SSH, or ask your hosting provider for the outbound (egress) IP. Hosts and developers can publish it here with the epay_paycenter_outbound_ip filter.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+				'label'    => __( 'Outbound IP (the value ePay needs)', 'resilient-gateway-for-epay-paycenter' ),
+				'value'    => ( '' !== $outbound_ip ) ? $outbound_ip : __( 'Not detected automatically', 'resilient-gateway-for-epay-paycenter' ),
+				'hint'     => __( 'The address this server uses when it calls the Paycenter ticketing service, and the one to register with Euronet Merchant Services. WordPress cannot read it, because only a request to an outside host reveals it. To find it, run  curl -4 https://api.ipify.org  on the server over SSH, or ask your hosting provider for the outbound (egress) IP. Hosts and developers can publish it here with the epay_paycenter_outbound_ip filter.', 'resilient-gateway-for-epay-paycenter' ),
 			),
-			'ip_address' => array(
-				'label' => __( 'Website IP (not the value for ePay)', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'value' => ( '' !== $server_addr ) ? $server_addr : __( 'Not detected', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'hint'  => __( 'The address this site is served on, as reported by WordPress. Behind a reverse proxy, load balancer, NAT or on a server with more than one IP, this is not the address that reaches Paycenter. Do not give this value to the bank unless your hosting provider has confirmed that the incoming and outgoing addresses are the same.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'ip_address'  => array(
+				'label' => __( 'Website IP (not the value for ePay)', 'resilient-gateway-for-epay-paycenter' ),
+				'value' => ( '' !== $server_addr ) ? $server_addr : __( 'Not detected', 'resilient-gateway-for-epay-paycenter' ),
+				'hint'  => __( 'The address this site is served on, as reported by WordPress. Behind a reverse proxy, load balancer, NAT or on a server with more than one IP, this is not the address that reaches Paycenter. Do not give this value to the bank unless your hosting provider has confirmed that the incoming and outgoing addresses are the same.', 'resilient-gateway-for-epay-paycenter' ),
 			),
-			'response'   => array(
-				'label' => __( 'Response method', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'value' => __( 'POST (recommended). GET is also accepted.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
-				'hint'  => __( 'Method Paycenter uses to deliver the transaction response to the Success / Failure URLs. The plugin handler accepts both; POST is the recommended choice on the merchant form.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			'response'    => array(
+				'label' => __( 'Response method', 'resilient-gateway-for-epay-paycenter' ),
+				'value' => __( 'POST (recommended). GET is also accepted.', 'resilient-gateway-for-epay-paycenter' ),
+				'hint'  => __( 'Method Paycenter uses to deliver the transaction response to the Success / Failure URLs. The plugin handler accepts both; POST is the recommended choice on the merchant form.', 'resilient-gateway-for-epay-paycenter' ),
 			),
 		);
 
@@ -747,7 +672,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			array(
 				'timeout'     => 3,
 				'redirection' => 2,
-				'user-agent'  => 'secure-card-gateway-for-epay-paycenter-piraeus-bank/' . EPAY_PAYCENTER_VERSION,
+				'user-agent'  => 'resilient-gateway-for-epay-paycenter/' . EPAY_PAYCENTER_VERSION,
 			)
 		);
 
@@ -819,37 +744,19 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			return (string) $this->get_option( 'password' );
 		}
 
-		// Idempotence: a value that already carries the marker is a digest
-		// being round-tripped, not a password to hash a second time.
-		if ( 0 === strpos( $value, self::PASSWORD_DIGEST_PREFIX ) ) {
-			return $value;
-		}
-
-		return self::PASSWORD_DIGEST_PREFIX . md5( $value );
+		return Epay_Paycenter_Credentials::for_storage( $value );
 	}
 
 	/**
 	 * Return the MD5 digest to send as the Ticketing Web Service `Password`.
 	 *
-	 * Handles both storage formats: the prefixed digest written since 1.0.36,
-	 * and the legacy plaintext left behind by an installation upgraded from
-	 * an earlier version, which is hashed on the fly and converted the next
-	 * time settings are saved.
+	 * Handles both storage formats: the prefixed digest written since 1.0.36 and
+	 * unprefixed plaintext from an older or restored database.
 	 *
 	 * @return string 32-character MD5 digest, or an empty string when unset.
 	 */
 	private function get_password_digest() {
-		$stored = (string) $this->get_option( 'password' );
-
-		if ( '' === $stored ) {
-			return '';
-		}
-
-		if ( 0 === strpos( $stored, self::PASSWORD_DIGEST_PREFIX ) ) {
-			return substr( $stored, strlen( self::PASSWORD_DIGEST_PREFIX ) );
-		}
-
-		return md5( $stored );
+		return Epay_Paycenter_Credentials::digest( (string) $this->get_option( 'password' ) );
 	}
 
 	/**
@@ -862,6 +769,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * @param string              $key  Field key.
 	 * @param array<string,mixed> $data Field definition.
 	 * @return string
+	 * @throws RuntimeException If another component closes the output buffer.
 	 */
 	public function generate_password_html( $key, $data ) {
 		$field_key = $this->get_field_key( $key );
@@ -915,7 +823,11 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			</td>
 		</tr>
 		<?php
-		return ob_get_clean();
+		$html = ob_get_clean();
+		if ( false === $html ) {
+			throw new RuntimeException( 'The gateway settings output buffer was closed unexpectedly.' );
+		}
+		return $html;
 	}
 
 	/**
@@ -1080,32 +992,27 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * page which renders the auto-submitted redirect form.
 	 *
 	 * @param int $order_id Order.
-	 * @return array
+	 * @return array{result:'failure'}|array{result:'success',redirect:string}
 	 */
 	public function process_payment( $order_id ) {
 		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
-			wc_add_notice( __( 'Order could not be loaded.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ), 'error' );
+		if ( ! $order instanceof WC_Order ) {
+			wc_add_notice( __( 'Order could not be loaded.', 'resilient-gateway-for-epay-paycenter' ), 'error' );
 			return array( 'result' => 'failure' );
 		}
 
-		// Capture the customer-picked installment count (classic checkout
-		// dropdown) and clamp it server-side against the merchant's
-		// tier policy evaluated for the live order total. The HTML
-		// dropdown values are cosmetic — only this server-side clamp
-		// is authoritative. WooCommerce verified the checkout nonce
-		// upstream before dispatching to process_payment(), so the
-		// $_POST read here is from an authenticated checkout submission.
+		// WooCommerce verifies the checkout nonce before calling process_payment().
+		// Recheck the submitted installment count against the merchant's rules.
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		$picked = isset( $_POST['epay_installments'] ) && is_scalar( $_POST['epay_installments'] )
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing
 			? absint( wp_unslash( $_POST['epay_installments'] ) )
 			: 1;
-		$max_allowed   = $this->compute_max_installments( (float) $order->get_total() );
-		$installments  = max( 1, min( $picked, $max_allowed ) );
+		$max_allowed  = $this->compute_max_installments( (float) $order->get_total() );
+		$installments = max( 1, min( $picked, $max_allowed ) );
 		$order->update_meta_data( '_epay_installments', $installments );
 
-		$order->update_status( 'pending', __( 'Awaiting Paycenter payment.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ) );
+		$order->update_status( 'pending', __( 'Awaiting Paycenter payment.', 'resilient-gateway-for-epay-paycenter' ) );
 
 		$redirect_url = $order->get_checkout_payment_url( true );
 
@@ -1121,10 +1028,10 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 *
 	 * @param int $order_id Order.
 	 */
-	public function output_receipt_page( $order_id ) {
+	public function output_receipt_page( $order_id ): void {
 		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
-			echo '<p>' . esc_html__( 'Order not found.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ) . '</p>';
+		if ( ! $order instanceof WC_Order ) {
+			echo '<p>' . esc_html__( 'Order not found.', 'resilient-gateway-for-epay-paycenter' ) . '</p>';
 			return;
 		}
 
@@ -1142,39 +1049,21 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		$cancel_token = wp_generate_password( 32, false, false );
 		$order->update_meta_data( '_epay_cancel_token', $cancel_token );
 
-		// Record this attempt in the bounded open-ticket set. The single
-		// `_epay_*` metas above still hold the latest attempt for audit
-		// parity and backward compatibility, but the set is what the callback
-		// handler validates against: it lets a callback that completes an
-		// EARLIER attempt (a second browser tab, or the Back button issuing a
-		// fresh ticket) match its own reference + TranTicket instead of only
-		// the most recent one - the case where the card was charged but the
-		// order was left `pending` on a MerchantReference mismatch.
-		self::store_open_ticket( $order, $merchant_reference, $ticket['tran_ticket'], $cancel_token );
-
-		$order->save();
+		// Keep each attempt independently so concurrent receipts retain their secrets.
+		Epay_Paycenter_Open_Tickets::store( $order, $merchant_reference, $ticket['tran_ticket'], $cancel_token );
 
 		$this->record_ticket_log( $order, $ticket['tran_ticket'], $merchant_reference );
 
-		// SECURITY: TranTicket is deliberately NOT included in this form.
-		// Redirection Manual v2.9 §4 states the ticket "in no case may [it]
-		// be visible to the user (e.g. not to be transferred via hidden
-		// parameters to an html form)", and the sample form in Annex 1 omits
-		// it. The ticket is the secret HMAC-SHA256 key used to authenticate
-		// the callback (see Epay_Paycenter_Hash); exposing it in the browser
-		// would let a customer forge a successful-payment callback for their
-		// own order. It is kept server-side only, in the `_epay_tran_ticket`
-		// order meta written above. The bank identifies the transaction by
-		// MerchantReference plus the merchant credentials registered during
-		// the IssueNewTicket call, not by a ticket echoed in this form.
+		// TranTicket authenticates callbacks and must remain server-side.
+		// The bank resolves this form using MerchantReference and merchant credentials.
 		$form_fields = array(
 			'AcquirerId'        => (string) $this->get_acquirer_id(),
 			'MerchantId'        => (string) $this->get_option( 'merchant_id' ),
-			'PosId'              => (string) $this->get_pos_id(),
-			'User'               => (string) $this->get_option( 'username' ),
-			'LanguageCode'       => $this->language_code,
-			'MerchantReference'  => $merchant_reference,
-			'ParamBackLink'      => $this->build_param_back_link( $order, $cancel_token ),
+			'PosId'             => (string) $this->get_pos_id(),
+			'User'              => (string) $this->get_option( 'username' ),
+			'LanguageCode'      => $this->language_code,
+			'MerchantReference' => $merchant_reference,
+			'ParamBackLink'     => $this->build_param_back_link( $order, $cancel_token ),
 		);
 
 		$template = EPAY_PAYCENTER_PLUGIN_DIR . 'templates/redirect-form.php';
@@ -1215,30 +1104,10 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 */
 	private function build_merchant_reference( $order ) {
 		$reference = (string) $order->get_id();
-		// Include a short random suffix so retried payments on the same
-		// order generate a new unique reference (the manual requires unique
-		// reference per successful transaction, but retries after a failure
-		// should also be traceable).
-		// SECURITY: this suffix is the per-order shared secret. It is what
-		// stops an unauthenticated client from driving another order's
-		// callback handling by guessing a sequential order id, and on the
-		// documented decline path (where Paycenter sends an empty HashKey)
-		// it is the ONLY secret gating the request.
-		//
-		// wp_generate_password() draws from a uniform 62-symbol alphabet, but
-		// upper-casing collapses each letter pair onto one symbol, cutting the
-		// per-character entropy from 5.95 to ~5.12 bits. The fold is kept
-		// because the reference is compared byte-for-byte against the value
-		// echoed back by the bank and must survive any case normalisation
-		// applied in transit; the length is raised instead, which is safe
-		// regardless. 12 characters gives ~61 bits post-fold (was ~31 at 6).
-		// The manual allows 50 characters; this uses at most 12 plus the
-		// order id and separator.
-		//
-		// Filtering happens before the length is taken so a stripped
-		// character cannot silently shorten the secret.
-		$suffix = strtoupper( wp_generate_password( 24, false, false ) );
-		$suffix = substr( preg_replace( '/[^A-Z0-9]/', '', $suffix ), 0, 12 );
+		// A random suffix distinguishes concurrent retries for the same order.
+		// Reference matching never replaces the callback's HashKey verification.
+		$suffix     = strtoupper( wp_generate_password( 24, false, false ) );
+		$suffix     = substr( $suffix, 0, 12 );
 		$reference .= '-' . $suffix;
 		return substr( $reference, 0, 50 );
 	}
@@ -1263,116 +1132,6 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	}
 
 	/**
-	 * Append a freshly issued payment attempt to the order's bounded set of
-	 * OPEN attempts, keyed by MerchantReference.
-	 *
-	 * Each entry carries the two per-attempt secrets: the TranTicket (the
-	 * HMAC-SHA256 key the callback is verified against) and the cancel token.
-	 * Keying by reference lets the handler validate a callback / cancel link
-	 * that belongs to ANY still-open attempt, not just the most recent one.
-	 * The set is capped at MAX_OPEN_TICKETS so repeated pay-page reloads
-	 * cannot grow order meta without bound and stale secrets do not linger.
-	 *
-	 * @param WC_Order $order        Order.
-	 * @param string   $reference    MerchantReference for this attempt.
-	 * @param string   $tran_ticket  TranTicket (HMAC key) for this attempt.
-	 * @param string   $cancel_token Per-attempt cancel token.
-	 * @return void
-	 */
-	public static function store_open_ticket( $order, $reference, $tran_ticket, $cancel_token ) {
-		$reference = (string) $reference;
-		if ( '' === $reference ) {
-			return;
-		}
-		$map = $order->get_meta( '_epay_open_tickets', true );
-		if ( ! is_array( $map ) ) {
-			$map = array();
-		}
-		// Re-issue in place so a repeated reference moves to the newest slot
-		// instead of creating a duplicate.
-		unset( $map[ $reference ] );
-		$map[ $reference ] = array(
-			'ticket' => (string) $tran_ticket,
-			'cancel' => (string) $cancel_token,
-		);
-		if ( count( $map ) > self::MAX_OPEN_TICKETS ) {
-			// Keep the most recent entries; PHP preserves insertion order so
-			// slicing from the tail drops the oldest attempts first.
-			$map = array_slice( $map, -self::MAX_OPEN_TICKETS, null, true );
-		}
-		$order->update_meta_data( '_epay_open_tickets', $map );
-	}
-
-	/**
-	 * Return the order's OPEN payment attempts as a
-	 * `reference => array{ticket:string,cancel:string}` map.
-	 *
-	 * Orders whose ticket was issued before this set existed (or a payment
-	 * in flight across the plugin upgrade) carry only the legacy single-value
-	 * meta. That pair is folded into the returned map so every caller sees a
-	 * single uniform structure and no in-flight payment is stranded by the
-	 * upgrade.
-	 *
-	 * @param WC_Order $order Order.
-	 * @return array<string,array{ticket:string,cancel:string}>
-	 */
-	public static function get_open_tickets( $order ) {
-		$map = $order->get_meta( '_epay_open_tickets', true );
-		if ( ! is_array( $map ) ) {
-			$map = array();
-		}
-		$legacy_ref = (string) $order->get_meta( '_epay_merchant_reference', true );
-		if ( '' !== $legacy_ref && ! isset( $map[ $legacy_ref ] ) ) {
-			$map[ $legacy_ref ] = array(
-				'ticket' => (string) $order->get_meta( '_epay_tran_ticket', true ),
-				'cancel' => (string) $order->get_meta( '_epay_cancel_token', true ),
-			);
-		}
-		return $map;
-	}
-
-	/**
-	 * Constant-time membership check for a cancel token against every OPEN
-	 * attempt's cancel token (legacy single value included).
-	 *
-	 * The whole set is scanned without an early return so the lookup time
-	 * does not reveal which attempt matched; each comparison is itself
-	 * timing-safe via hash_equals().
-	 *
-	 * @param WC_Order $order Order.
-	 * @param string   $token Token supplied on the cancel backlink.
-	 * @return bool
-	 */
-	public static function verify_cancel_token( $order, $token ) {
-		$token = (string) $token;
-		if ( '' === $token ) {
-			return false;
-		}
-		$matched = false;
-		foreach ( self::get_open_tickets( $order ) as $data ) {
-			$cancel = isset( $data['cancel'] ) ? (string) $data['cancel'] : '';
-			if ( '' !== $cancel && hash_equals( $cancel, $token ) ) {
-				$matched = true;
-			}
-		}
-		return $matched;
-	}
-
-	/**
-	 * Clear every OPEN attempt once the order is settled, removing the
-	 * plaintext TranTicket(s) promptly after successful verification. The
-	 * legacy single-value `_epay_tran_ticket` is dropped too; the
-	 * `_epay_merchant_reference` is deliberately retained for audit parity.
-	 *
-	 * @param WC_Order $order Order.
-	 * @return void
-	 */
-	public static function clear_open_tickets( $order ) {
-		$order->delete_meta_data( '_epay_open_tickets' );
-		$order->delete_meta_data( '_epay_tran_ticket' );
-	}
-
-	/**
 	 * Insert a minimal accounting record for the ticket so administrators can
 	 * audit ticketing activity without inspecting order meta. Tran ticket
 	 * itself is stored as a SHA-256 digest only - the plaintext lives only in
@@ -1382,7 +1141,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * @param string   $tran_ticket Ticket.
 	 * @param string   $reference   Merchant reference.
 	 */
-	private function record_ticket_log( $order, $tran_ticket, $reference ) {
+	private function record_ticket_log( $order, $tran_ticket, $reference ): void {
 		global $wpdb;
 		$table = $wpdb->prefix . 'epay_paycenter_tickets';
 
@@ -1392,23 +1151,25 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		$wpdb->insert(
 			$table,
 			array(
-				'order_id'          => (int) $order->get_id(),
-				'merchant_reference'=> $reference,
-				'tran_ticket_hash'  => hash( 'sha256', $tran_ticket ),
-				'acquirer_id'       => $this->get_acquirer_id(),
-				'merchant_id'       => (int) $this->get_option( 'merchant_id' ),
-				'pos_id'            => $this->get_pos_id(),
-				'amount'            => wc_format_decimal( $order->get_total(), 2 ),
-				'currency_code'     => (int) Epay_Paycenter_Currencies::to_numeric( $order->get_currency() ),
-				'installments'      => (int) max( 1, (int) $order->get_meta( '_epay_installments', true ) ),
-				'request_type'      => self::REQUEST_TYPE,
-				'status'            => 'pending',
-				'created_at'        => $now,
-				'updated_at'        => $now,
+				'order_id'           => (int) $order->get_id(),
+				'merchant_reference' => $reference,
+				'tran_ticket_hash'   => hash( 'sha256', $tran_ticket ),
+				'acquirer_id'        => $this->get_acquirer_id(),
+				'merchant_id'        => (int) $this->get_option( 'merchant_id' ),
+				'pos_id'             => $this->get_pos_id(),
+				'amount'             => wc_format_decimal( $order->get_total(), 2 ),
+				'currency_code'      => (int) Epay_Paycenter_Currencies::to_numeric( $order->get_currency() ),
+				'installments'       => (int) max( 1, (int) $order->get_meta( '_epay_installments', true ) ),
+				'request_type'       => self::REQUEST_TYPE,
+				'status'             => Epay_Paycenter_Ticket_Audit::STATUS_PENDING,
+				'created_at'         => $now,
+				'updated_at'         => $now,
 			),
 			array( '%d', '%s', '%s', '%d', '%d', '%d', '%s', '%d', '%d', '%s', '%s', '%s', '%s' )
 		);
 		// phpcs:enable
+
+		Epay_Paycenter_Reconciliation::schedule_attempt( (int) $order->get_id(), $reference );
 	}
 
 	/**
@@ -1416,44 +1177,38 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 *
 	 * @param WC_Order $order              Order.
 	 * @param string   $merchant_reference Reference.
-	 * @return array Ticket result.
+	 * @return TicketResult Ticket result.
 	 */
 	private function request_ticket( $order, $merchant_reference ) {
 		$currency_numeric = Epay_Paycenter_Currencies::to_numeric( $order->get_currency() );
 		if ( null === $currency_numeric ) {
 			return array(
-				'success' => false,
-				'error'   => sprintf(
+				'success'     => false,
+				'error'       => sprintf(
 					/* translators: %s currency code */
-					__( 'Currency %s is not supported by Paycenter.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					__( 'Currency %s is not supported by Paycenter.', 'resilient-gateway-for-epay-paycenter' ),
 					$order->get_currency()
 				),
 				'result_code' => '',
 				'description' => '',
+				'tran_ticket' => '',
+				'minutes'     => 0,
 			);
 		}
 
-		// Installments: read from order meta if the customer picked a
-		// value during checkout, and re-clamp against the merchant's
-		// tier policy for the live order total. Defence-in-depth: even
-		// though process_payment() already clamped before storing, the
-		// tier setting (or order total) may have changed between the
-		// classic-checkout submit and the pay-for-order redirect. The
-		// ticket request is the last point before the bank, so any
-		// drift gets corrected here too. A value of 1 is the bank's
-		// canonical "no installments" per Manual v2.9 §4.
+		// Recheck at ticket creation because settings or totals can change after checkout.
 		$picked_installments = (int) $order->get_meta( '_epay_installments', true );
 		if ( $picked_installments < 1 ) {
 			$picked_installments = 1;
 		}
-		$max_for_order  = $this->compute_max_installments( (float) $order->get_total() );
-		$installments   = max( 1, min( $picked_installments, $max_for_order ) );
+		$max_for_order = $this->compute_max_installments( (float) $order->get_total() );
+		$installments  = max( 1, min( $picked_installments, $max_for_order ) );
 
 		$request = array(
 			'Username'          => (string) $this->get_option( 'username' ),
 			'Password'          => $this->get_password_digest(),
 			'MerchantId'        => (string) $this->get_option( 'merchant_id' ),
-			'PosId'              => (string) $this->get_pos_id(),
+			'PosId'             => (string) $this->get_pos_id(),
 			'AcquirerId'        => (string) $this->get_acquirer_id(),
 			'MerchantReference' => $merchant_reference,
 			'RequestType'       => self::REQUEST_TYPE,
@@ -1480,19 +1235,12 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		$client = new Epay_Paycenter_Ticketing();
 		$result = $client->issue_ticket( $request );
 
-		// Ticket issuance is the only call that carries the merchant
-		// credentials, so an authentication failure can surface here and
-		// nowhere else. Annex 6 ResultCode 100 means the Username and/or
-		// Password are wrong, which fails every checkout until it is fixed.
-		//
-		// A success clears the alert unconditionally: a ticket cannot be
-		// issued unless the credentials authenticated, so it is proof the
-		// outage is over. Only code 100 raises it - a transport error or an
-		// HTTP failure is transient and says nothing about the credentials.
+		// ResultCode 100 identifies invalid Ticketing credentials. Transport failures
+		// cannot establish a credential outage; successful issuance clears one.
 		if ( ! empty( $result['success'] ) ) {
-			Epay_Paycenter_Plugin::clear_credentials_error();
+			Epay_Paycenter_Credential_Notice::clear();
 		} elseif ( '100' === (string) $result['result_code'] ) {
-			Epay_Paycenter_Plugin::flag_credentials_error( (string) $result['description'] );
+			Epay_Paycenter_Credential_Notice::flag( (string) $result['description'] );
 			Epay_Paycenter_Logger::error(
 				'Paycenter rejected the stored credentials (ResultCode 100). Card payments are failing for every customer until the Username / Password on the gateway settings screen are corrected.',
 				array( 'description' => (string) $result['description'] )
@@ -1510,10 +1258,11 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * Append 3-D Secure billing / shipping / cardholder fields to the
 	 * ticketing request.
 	 *
-	 * @param array    $request Reference to request to modify.
-	 * @param WC_Order $order   Order.
+	 * @param array<string,string> $request Reference to request to modify.
+	 * @phpstan-param TicketRequest $request
+	 * @param WC_Order             $order   Order.
 	 */
-	private function append_address_fields( array &$request, $order ) {
+	private function append_address_fields( array &$request, $order ): void {
 		$email = sanitize_email( (string) $order->get_billing_email() );
 		if ( '' !== $email ) {
 			$request['Email'] = substr( $email, 0, 254 );
@@ -1533,7 +1282,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			$request['BillAddrCity']     = $this->sanitize_address( $order->get_billing_city() );
 			$request['BillAddrLine1']    = $this->sanitize_address( $order->get_billing_address_1() );
 			$request['BillAddrLine2']    = $this->sanitize_address( $order->get_billing_address_2() );
-			$request['BillAddrPostCode'] = substr( preg_replace( '/[^A-Za-z0-9 -]/', '', (string) $order->get_billing_postcode() ), 0, 16 );
+			$request['BillAddrPostCode'] = $this->sanitize_postcode( $order->get_billing_postcode() );
 			$request['BillAddrState']    = Epay_Paycenter_Countries::map_state( $billing_country, (string) $order->get_billing_state() );
 		}
 
@@ -1545,34 +1294,19 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 				$request['ShipAddrCity']     = $this->sanitize_address( $order->get_shipping_city() );
 				$request['ShipAddrLine1']    = $this->sanitize_address( $order->get_shipping_address_1() );
 				$request['ShipAddrLine2']    = $this->sanitize_address( $order->get_shipping_address_2() );
-				$request['ShipAddrPostCode'] = substr( preg_replace( '/[^A-Za-z0-9 -]/', '', (string) $order->get_shipping_postcode() ), 0, 16 );
+				$request['ShipAddrPostCode'] = $this->sanitize_postcode( $order->get_shipping_postcode() );
 				$request['ShipAddrState']    = Epay_Paycenter_Countries::map_state( $shipping_country, (string) $order->get_shipping_state() );
 			}
 		}
 
-		// WooCommerce collects a single billing phone with no indication of
-		// what kind of line it is, and every number was previously sent as
-		// MobilePhone. The Ticketing service exposes MobilePhone, HomePhone
-		// and WorkPhone as distinct 3-D Secure inputs, and the issuer's risk
-		// engine reads them as distinct facts: a landline filed as a mobile is
-		// not enrichment, it is a wrong answer, and wrong answers are what
-		// push a transaction out of the frictionless flow. Route it instead.
+		// Classify Greek fixed lines separately from mobile numbers for 3-D Secure.
 		$phone = $this->format_phone( $order->get_billing_phone(), $billing_country );
 		if ( '' !== $phone ) {
 			$request[ $this->phone_field_for( $phone, $billing_country ) ] = $phone;
 		}
 
-		// BillAddrLine3, ShipAddrLine3 and WorkPhone have no WooCommerce
-		// source at all: core has exactly two address lines and one billing
-		// phone. That absence, not an oversight, is why they were never
-		// populated - and inventing values for fields a fraud engine scores
-		// would be worse than omitting them.
-		//
-		// A store whose checkout genuinely collects that data (a custom third
-		// address line, a second phone) can supply it here. Everything the
-		// filter returns is re-validated below against the same rules applied
-		// to native data, so a filter cannot put spec-violating characters or
-		// an over-long value into a request bound for the bank.
+		// Extensions may supply additional address lines or phones absent from core.
+		// Filter values are validated before they enter the bank request.
 		$extra = apply_filters( 'epay_paycenter_3ds_fields', array(), $order );
 		if ( is_array( $extra ) && ! empty( $extra ) ) {
 			$this->merge_3ds_fields( $request, $extra, $billing_country );
@@ -1590,7 +1324,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 *
 	 * @param string $formatted      Phone already in "CC-Number" form.
 	 * @param string $country_alpha2 Billing country.
-	 * @return string 'MobilePhone' or 'HomePhone'.
+	 * @return 'MobilePhone'|'HomePhone'
 	 */
 	private function phone_field_for( $formatted, $country_alpha2 ) {
 		if ( 'GR' !== strtoupper( (string) $country_alpha2 ) ) {
@@ -1616,11 +1350,12 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * bank, and the manual constrains both the character set and the length of
 	 * every one of these parameters.
 	 *
-	 * @param array  $request        Request being built, by reference.
-	 * @param array  $extra          Raw values returned by the filter.
-	 * @param string $country_alpha2 Billing country, for phone formatting.
+	 * @param array<string,string>   $request Request being built, by reference.
+	 * @phpstan-param TicketRequest $request
+	 * @param array<array-key,mixed> $extra Raw values returned by the filter.
+	 * @param string                 $country_alpha2 Billing country, for phone formatting.
 	 */
-	private function merge_3ds_fields( array &$request, array $extra, $country_alpha2 ) {
+	private function merge_3ds_fields( array &$request, array $extra, $country_alpha2 ): void {
 		$address_fields = array( 'BillAddrLine3', 'ShipAddrLine3' );
 		$phone_fields   = array( 'HomePhone', 'MobilePhone', 'WorkPhone' );
 
@@ -1650,10 +1385,13 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * @return string
 	 */
 	private function sanitize_cardholder( $name ) {
-		$name  = remove_accents( (string) $name );
-		$name  = preg_replace( '/["\'`;<>]/', '', $name );
-		$name  = preg_replace( '/\s+/', ' ', $name );
-		$name  = trim( (string) $name );
+		$name = remove_accents( (string) $name );
+		$name = str_replace( array( '"', "'", '`', ';', '<', '>' ), '', $name );
+		$name = preg_replace( '/\s+/', ' ', $name );
+		if ( null === $name ) {
+			return '';
+		}
+		$name = trim( $name );
 		if ( '' === $name ) {
 			return '';
 		}
@@ -1672,11 +1410,23 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * @return string
 	 */
 	private function sanitize_address( $text ) {
-		$text = (string) $text;
 		$text = preg_replace( '#[^\p{L}\p{N} /:_().,+\-]#u', '', $text );
-		$text = preg_replace( '/\s+/', ' ', (string) $text );
-		$text = trim( (string) $text );
-		return substr( (string) $text, 0, 50 );
+		if ( null === $text ) {
+			return '';
+		}
+		$text = preg_replace( '/\s+/', ' ', $text );
+		return null === $text ? '' : substr( trim( $text ), 0, 50 );
+	}
+
+	/**
+	 * Limit a postal code to the characters and length accepted by Paycenter.
+	 *
+	 * @param string $postcode Billing or shipping postal code.
+	 * @return string
+	 */
+	private function sanitize_postcode( $postcode ) {
+		$clean = preg_replace( '/[^A-Za-z0-9 -]/', '', $postcode );
+		return null === $clean ? '' : substr( $clean, 0, 16 );
 	}
 
 	/**
@@ -1688,17 +1438,37 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 */
 	private function format_phone( $phone, $country_alpha2 ) {
 		$phone = preg_replace( '/[^\d+]/', '', (string) $phone );
-		if ( '' === $phone ) {
+		if ( null === $phone || '' === $phone ) {
 			return '';
 		}
 
 		// WooCommerce country code to common calling codes (subset).
 		$calling_codes = array(
-			'GR' => '30', 'CY' => '357', 'GB' => '44', 'DE' => '49', 'FR' => '33',
-			'IT' => '39', 'ES' => '34', 'US' => '1', 'CA' => '1', 'BG' => '359',
-			'RO' => '40', 'AT' => '43', 'BE' => '32', 'NL' => '31', 'PL' => '48',
-			'PT' => '351', 'IE' => '353', 'SE' => '46', 'NO' => '47', 'DK' => '45',
-			'FI' => '358', 'CH' => '41', 'CZ' => '420', 'HU' => '36', 'SK' => '421',
+			'GR' => '30',
+			'CY' => '357',
+			'GB' => '44',
+			'DE' => '49',
+			'FR' => '33',
+			'IT' => '39',
+			'ES' => '34',
+			'US' => '1',
+			'CA' => '1',
+			'BG' => '359',
+			'RO' => '40',
+			'AT' => '43',
+			'BE' => '32',
+			'NL' => '31',
+			'PL' => '48',
+			'PT' => '351',
+			'IE' => '353',
+			'SE' => '46',
+			'NO' => '47',
+			'DK' => '45',
+			'FI' => '358',
+			'CH' => '41',
+			'CZ' => '420',
+			'HU' => '36',
+			'SK' => '421',
 		);
 
 		$cc = isset( $calling_codes[ strtoupper( $country_alpha2 ) ] ) ? $calling_codes[ strtoupper( $country_alpha2 ) ] : '';
@@ -1727,11 +1497,12 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 *
 	 * @param WC_Order $order  Order.
 	 * @param array    $result Ticket result.
+	 * @phpstan-param TicketResult $result
 	 */
-	private function render_ticket_error( $order, array $result ) {
+	private function render_ticket_error( $order, array $result ): void {
 		$note = sprintf(
 			/* translators: 1: result code, 2: description */
-			__( 'Paycenter ticketing failed. Result code: %1$s. Description: %2$s.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+			__( 'Paycenter ticketing failed. Result code: %1$s. Description: %2$s.', 'resilient-gateway-for-epay-paycenter' ),
 			$result['result_code'],
 			$result['description']
 		);
@@ -1740,53 +1511,28 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		$order->save();
 
 		echo '<div class="woocommerce-error" role="alert"><p>';
-		echo esc_html__( 'We could not start a secure card payment at the moment. Please try again later or choose a different payment method.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+		echo esc_html__( 'We could not start a secure card payment at the moment. Please try again later or choose a different payment method.', 'resilient-gateway-for-epay-paycenter' );
 		echo '</p></div>';
 
 		echo '<p><a class="button" href="' . esc_url( wc_get_checkout_url() ) . '">';
-		echo esc_html__( 'Return to checkout', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' );
+		echo esc_html__( 'Return to checkout', 'resilient-gateway-for-epay-paycenter' );
 		echo '</a></p>';
 	}
 
 	/**
-	 * AJAX: self-test the WC-API callback URL for host-WAF interception.
+	 * Test the callback using a synthetic, order-independent loopback request.
 	 *
-	 * Fired from the "Test callback URL" button on the settings screen.
-	 * Performs an authenticated, same-origin POST from the WordPress server
-	 * to the plugin's own `?wc-api=epay_paycenter` endpoint using a
-	 * synthetic Paycenter "declined transaction" payload. The payload is
-	 * made up entirely of static / generated values - it carries no
-	 * credentials and cannot modify any order state (MerchantReference is a
-	 * synthetic WAFTEST-... string that will not match any order, so the
-	 * handler short-circuits to a 302 redirect back to the checkout page).
-	 *
-	 * Expected healthy outcome: HTTP 302 from our own handler (or 200 with
-	 * empty body). WAF interception typically manifests as HTTP 403 / 406 /
-	 * 501 before the request reaches PHP. The response body / interesting
-	 * headers (Server, CF-Ray, X-Sucuri-ID, X-Imunify360-WAF, etc.) are
-	 * passed back to the browser so the merchant can identify which WAF is
-	 * blocking and craft a narrow exclusion.
-	 *
-	 * Security:
-	 *  - Capability-gated on `manage_woocommerce`.
-	 *  - Nonce-gated via `check_ajax_referer()`.
-	 *  - No user input participates in the target URL (built from
-	 *    `home_url()` + a static WC-API query arg), so this is not an SSRF
-	 *    vector: the request can only ever loop back to this same site.
-	 *  - No sensitive data (credentials, TranTicket, HashKey, cardholder
-	 *    data) is transmitted in the synthetic payload.
-	 *  - Response headers echoed back to the browser are filtered through
-	 *    a hard-coded allow-list (Server / CF-Ray / X-Sucuri-ID / ...) so
-	 *    arbitrary headers cannot be reflected.
-	 *  - Response body is truncated to 500 chars, HTML-stripped, and
-	 *    sanitized before being returned to the admin JS.
+	 * Success requires the handler marker and its exact checkout redirect.
+	 * A loopback success does not establish that requests from the bank reach PHP.
+	 * Only administrators with a valid nonce can run this fixed-URL diagnostic;
+	 * response headers are allowlisted and the displayed body is bounded.
 	 */
-	public static function ajax_run_waf_test() {
+	public static function ajax_run_waf_test(): void {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			wp_send_json_error(
 				array(
 					'code'    => 'forbidden',
-					'message' => __( 'You do not have permission to run this diagnostic.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					'message' => __( 'You do not have permission to run this diagnostic.', 'resilient-gateway-for-epay-paycenter' ),
 				),
 				403
 			);
@@ -1822,11 +1568,8 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			'timeout'     => 10,
 			'redirection' => 0,
 			'httpversion' => '1.1',
-			// Mirrors the stock wp_remote_post loopback behaviour: allow
-			// self-signed certs on dev / staging environments the same
-			// way core does for cron / REST loopbacks. Production sites
-			// with a valid certificate will still verify normally.
-			'sslverify'   => (bool) apply_filters( 'https_local_ssl_verify', false ), // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- WordPress core filter.
+			// Verify HTTPS unless a local-development filter explicitly opts out.
+			'sslverify'   => (bool) apply_filters( 'https_local_ssl_verify', true ), // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- WordPress core filter.
 			'blocking'    => true,
 			'headers'     => array(
 				'Content-Type'               => 'application/x-www-form-urlencoded',
@@ -1843,7 +1586,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			wp_send_json_error(
 				array(
 					'code'       => 'transport',
-					'message'    => __( 'The self-test POST could not be issued from this server. This usually means the WordPress host cannot reach its own public URL (DNS / loopback / TLS issue). Paycenter callbacks from the bank are a separate ingress path and may still work, but this self-test cannot validate them without loopback connectivity.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+					'message'    => __( 'The self-test POST could not be issued from this server. This usually means the WordPress host cannot reach its own public URL (DNS / loopback / TLS issue). Paycenter callbacks from the bank are a separate ingress path and may still work, but this self-test cannot validate them without loopback connectivity.', 'resilient-gateway-for-epay-paycenter' ),
 					'detail'     => $response->get_error_message(),
 					'target_url' => $target,
 				),
@@ -1854,8 +1597,8 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		$status      = (int) wp_remote_retrieve_response_code( $response );
 		$headers_obj = wp_remote_retrieve_headers( $response );
 		$all_headers = array();
-		if ( is_object( $headers_obj ) && method_exists( $headers_obj, 'getAll' ) ) {
-			$all_headers = (array) $headers_obj->getAll();
+		if ( $headers_obj instanceof \WpOrg\Requests\Utility\CaseInsensitiveDictionary ) {
+			$all_headers = $headers_obj->getAll();
 		} elseif ( is_array( $headers_obj ) ) {
 			$all_headers = $headers_obj;
 		}
@@ -1881,10 +1624,10 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			'content-type',
 			'location',
 		);
-		$safe_headers = array();
+		$safe_headers      = array();
 		foreach ( $header_allow_list as $name ) {
 			if ( isset( $all_headers[ $name ] ) ) {
-				$value              = is_array( $all_headers[ $name ] )
+				$value                 = is_array( $all_headers[ $name ] )
 					? implode( ', ', array_map( 'strval', $all_headers[ $name ] ) )
 					: (string) $all_headers[ $name ];
 				$safe_headers[ $name ] = sanitize_text_field( $value );
@@ -1898,8 +1641,11 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		$body_snippet = wp_strip_all_tags( $body_snippet );
 		$body_snippet = sanitize_text_field( $body_snippet );
 
-		$verdict = 'pass';
-		$blocked = false;
+		$handler_marker  = wp_remote_retrieve_header( $response, 'x-epay-paycenter-handler' );
+		$location        = wp_remote_retrieve_header( $response, 'location' );
+		$handler_reached = '1' === $handler_marker && 302 === $status && wc_get_checkout_url() === $location;
+		$verdict         = $handler_reached ? 'pass' : 'unexpected_response';
+		$blocked         = false;
 		if ( 403 === $status || 406 === $status || 501 === $status ) {
 			$verdict = 'blocked';
 			$blocked = true;
@@ -1936,29 +1682,21 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			<div class="epay-card__header">
 				<span class="dashicons dashicons-bank" aria-hidden="true"></span>
 				<h3 id="epay-bankdata-title" class="epay-card__title">
-					<?php echo esc_html__( 'Bank integration data', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+					<?php echo esc_html__( 'Bank integration data', 'resilient-gateway-for-epay-paycenter' ); ?>
 				</h3>
 				<span class="epay-card__subtitle">
-					<?php echo esc_html__( 'Values to submit to Euronet Merchant Services', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+					<?php echo esc_html__( 'Values to submit to Euronet Merchant Services', 'resilient-gateway-for-epay-paycenter' ); ?>
 				</span>
 			</div>
 			<div class="epay-card__body">
 					<div class="epay-techdata">
 
 						<p class="epay-techdata__notice">
-							<?php echo esc_html__( 'Copy the following values into the technical data form provided by Euronet Merchant Services / Piraeus Bank when requesting test or live credentials. Values are generated from this WordPress installation and will change if the site URL moves.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+							<?php echo esc_html__( 'Copy the following values into the technical data form provided by Euronet Merchant Services / Piraeus Bank when requesting test or live credentials. Values are generated from this WordPress installation and will change if the site URL moves.', 'resilient-gateway-for-epay-paycenter' ); ?>
 						</p>
 
 						<?php
-						// Combine all three callback URLs into a single grey
-						// textarea with one Copy button. Labels come from
-						// collect_bank_integration_data() so the existing
-						// Greek translations are reused verbatim (no new
-						// translatable strings introduced for the URL labels
-						// themselves). The Copy button reuses the existing
-						// .epay-copy__btn handler which copies the target
-						// element's value/innerText — same wiring as the
-						// Cloudflare CIDR list below.
+						// Keep related bank integration values in one copyable field.
 						$url_lines = array();
 						foreach ( $bank_data['urls'] as $row ) {
 							// $row['label'] and $row['value'] come from the
@@ -1972,9 +1710,9 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 						<div class="epay-techdata__group epay-techdata__group--urls">
 							<div class="epay-copy epay-copy--block">
 								<textarea id="epay-td-urls" class="epay-copy__textarea" readonly rows="<?php echo (int) $url_rows; ?>"><?php echo esc_textarea( implode( "\n", $url_lines ) ); ?></textarea>
-								<button type="button" class="epay-copy__btn" data-target="epay-td-urls" aria-label="<?php echo esc_attr__( 'Copy callback URLs to clipboard', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>">
+								<button type="button" class="epay-copy__btn" data-target="epay-td-urls" aria-label="<?php echo esc_attr__( 'Copy callback URLs to clipboard', 'resilient-gateway-for-epay-paycenter' ); ?>">
 									<span class="dashicons dashicons-admin-page" aria-hidden="true"></span>
-									<span class="epay-copy__btn-label"><?php echo esc_html__( 'Copy', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?></span>
+									<span class="epay-copy__btn-label"><?php echo esc_html__( 'Copy', 'resilient-gateway-for-epay-paycenter' ); ?></span>
 								</button>
 							</div>
 						</div>
@@ -1982,13 +1720,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 						<div class="epay-techdata__group epay-techdata__group--split">
 
 							<?php
-							// Outbound IP first: it is the value the bank actually needs.
-							// The Copy button is rendered ONLY when the value is real (i.e.
-							// supplied via the epay_paycenter_outbound_ip filter). Offering
-							// one-click copy next to a placeholder - or, as before, next to
-							// the inbound address - is what led merchants to paste the wrong
-							// IP into the Euronet portal and then see every ticket request
-							// fail with nothing to diagnose.
+							// Offer copying only for a confirmed outbound address.
 							$out_row      = $bank_data['server']['outbound_ip'];
 							$has_outbound = ! empty( $out_row['detected'] );
 							?>
@@ -2000,9 +1732,9 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 									</label>
 									<div class="epay-copy">
 										<input id="epay-td-outip" class="epay-copy__input" type="text" readonly value="<?php echo esc_attr( $out_row['value'] ); ?>" />
-										<button type="button" class="epay-copy__btn" data-target="epay-td-outip" aria-label="<?php echo esc_attr__( 'Copy IP address to clipboard', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>">
+										<button type="button" class="epay-copy__btn" data-target="epay-td-outip" aria-label="<?php echo esc_attr__( 'Copy IP address to clipboard', 'resilient-gateway-for-epay-paycenter' ); ?>">
 											<span class="dashicons dashicons-admin-page" aria-hidden="true"></span>
-											<span class="epay-copy__btn-label"><?php echo esc_html__( 'Copy', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?></span>
+											<span class="epay-copy__btn-label"><?php echo esc_html__( 'Copy', 'resilient-gateway-for-epay-paycenter' ); ?></span>
 										</button>
 									</div>
 								<?php else : ?>
@@ -2042,13 +1774,13 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 							<details class="epay-techdata__notice epay-techdata__notice--cloudflare">
 								<summary class="epay-techdata__notice-heading">
 									<span class="dashicons dashicons-cloud" aria-hidden="true"></span>
-									<?php echo esc_html__( 'Cloudflare detected on this site', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+									<?php echo esc_html__( 'Cloudflare detected on this site', 'resilient-gateway-for-epay-paycenter' ); ?>
 								</summary>
 								<p>
-									<?php echo esc_html__( 'This store appears to be served through Cloudflare (a CF-Ray / CF-Connecting-IP header was detected on the current request). Requests from Paycenter to your Success / Failure / Backlink URLs therefore reach your site through Cloudflare edge IPs, not only from the web server address shown above. To avoid blocked callbacks, ask Euronet Merchant Services to whitelist the full Cloudflare IPv4 range in addition to your webserver IP.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+									<?php echo esc_html__( 'This store appears to be served through Cloudflare (a CF-Ray / CF-Connecting-IP header was detected on the current request). Requests from Paycenter to your Success / Failure / Backlink URLs therefore reach your site through Cloudflare edge IPs, not only from the web server address shown above. To avoid blocked callbacks, ask Euronet Merchant Services to whitelist the full Cloudflare IPv4 range in addition to your webserver IP.', 'resilient-gateway-for-epay-paycenter' ); ?>
 								</p>
 								<p>
-									<?php echo esc_html__( 'Contact the following addresses and request that the Cloudflare IPv4 ranges be added to your merchant record:', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+									<?php echo esc_html__( 'Contact the following addresses and request that the Cloudflare IPv4 ranges be added to your merchant record:', 'resilient-gateway-for-epay-paycenter' ); ?>
 								</p>
 								<ul class="epay-techdata__emails">
 									<li>
@@ -2065,7 +1797,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 									echo wp_kses_post(
 										sprintf(
 											/* translators: %s: link to Cloudflare's official IPv4 list. */
-											__( 'The authoritative Cloudflare IPv4 list is always published at %s and is updated by Cloudflare when their edge network changes.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ),
+											__( 'The authoritative Cloudflare IPv4 list is always published at %s and is updated by Cloudflare when their edge network changes.', 'resilient-gateway-for-epay-paycenter' ),
 											'<a href="' . esc_url( 'https://www.cloudflare.com/ips-v4/' ) . '" target="_blank" rel="noopener noreferrer">cloudflare.com/ips-v4</a>'
 										)
 									);
@@ -2078,24 +1810,24 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 										<?php
 										printf(
 											/* translators: %d: number of CIDR ranges fetched. */
-											esc_html( _n( 'Current Cloudflare IPv4 ranges (%d CIDR)', 'Current Cloudflare IPv4 ranges (%d CIDRs)', count( $cf_ranges ), 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ) ),
+											esc_html( _n( 'Current Cloudflare IPv4 ranges (%d CIDR)', 'Current Cloudflare IPv4 ranges (%d CIDRs)', count( $cf_ranges ), 'resilient-gateway-for-epay-paycenter' ) ),
 											(int) count( $cf_ranges )
 										);
 										?>
 									</label>
 									<div class="epay-copy epay-copy--block">
 										<textarea id="epay-td-cf-ipv4" class="epay-copy__textarea" readonly rows="6"><?php echo esc_textarea( implode( "\n", $cf_ranges ) ); ?></textarea>
-										<button type="button" class="epay-copy__btn" data-target="epay-td-cf-ipv4" aria-label="<?php echo esc_attr__( 'Copy Cloudflare IPv4 ranges to clipboard', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>">
+										<button type="button" class="epay-copy__btn" data-target="epay-td-cf-ipv4" aria-label="<?php echo esc_attr__( 'Copy Cloudflare IPv4 ranges to clipboard', 'resilient-gateway-for-epay-paycenter' ); ?>">
 											<span class="dashicons dashicons-admin-page" aria-hidden="true"></span>
-											<span class="epay-copy__btn-label"><?php echo esc_html__( 'Copy all ranges', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?></span>
+											<span class="epay-copy__btn-label"><?php echo esc_html__( 'Copy all ranges', 'resilient-gateway-for-epay-paycenter' ); ?></span>
 										</button>
 									</div>
 									<p class="epay-techdata__hint">
-										<?php echo esc_html__( 'Fetched from Cloudflare and cached for 12 hours. Copy these CIDRs into the email alongside your webserver IP.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+										<?php echo esc_html__( 'Fetched from Cloudflare and cached for 12 hours. Copy these CIDRs into the email alongside your webserver IP.', 'resilient-gateway-for-epay-paycenter' ); ?>
 									</p>
 								<?php else : ?>
 									<p class="epay-techdata__hint">
-										<?php echo esc_html__( 'The live Cloudflare IPv4 list could not be fetched from this server right now. Please copy it manually from the link above.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+										<?php echo esc_html__( 'The live Cloudflare IPv4 list could not be fetched from this server right now. Please copy it manually from the link above.', 'resilient-gateway-for-epay-paycenter' ); ?>
 									</p>
 								<?php endif; ?>
 							</details>
@@ -2103,6 +1835,53 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 
 					</div>
 				</div>
+		</section>
+		<?php
+	}
+
+	/**
+	 * Render the read-only bank channel detector. A successful test stores
+	 * only the verified channel/fingerprint; enabling recovery remains a
+	 * separate settings save.
+	 *
+	 * @return void
+	 */
+	private function render_follow_up_diagnostics_card() {
+		$channel = Epay_Paycenter_Reconciliation::verified_channel();
+		$active  = Epay_Paycenter_Reconciliation::is_enabled();
+		if ( $active ) {
+			$status_label = __( 'Active', 'resilient-gateway-for-epay-paycenter' );
+		} elseif ( '' !== $channel ) {
+			/* translators: %s: verified ePay ChannelType (eCommerce or 3DSecure). */
+			$status_label = sprintf( __( 'Verified: %s', 'resilient-gateway-for-epay-paycenter' ), $channel );
+		} else {
+			$status_label = __( 'Not verified', 'resilient-gateway-for-epay-paycenter' );
+		}
+		?>
+		<section class="epay-card" aria-labelledby="epay-follow-up-title">
+			<div class="epay-card__header">
+				<span class="dashicons dashicons-update-alt" aria-hidden="true"></span>
+				<h3 id="epay-follow-up-title" class="epay-card__title">
+					<?php echo esc_html__( 'Missing-response recovery', 'resilient-gateway-for-epay-paycenter' ); ?>
+				</h3>
+				<span class="epay-card__subtitle" id="epay-follow-up-status">
+					<?php echo esc_html( $status_label ); ?>
+				</span>
+			</div>
+			<div class="epay-card__body">
+				<p class="epay-techdata__notice">
+					<?php echo esc_html__( 'Use an ePay order that is already shown as successful in the AdminTool. The test tries eCommerce and then 3DSecure with AcquirerID GR014. It reads the bank result but does not change the order.', 'resilient-gateway-for-epay-paycenter' ); ?>
+				</p>
+				<div class="epay-waftest__controls epay-follow-up__controls">
+					<label for="epay-follow-up-order"><?php echo esc_html__( 'Successful order ID', 'resilient-gateway-for-epay-paycenter' ); ?></label>
+					<input id="epay-follow-up-order" type="number" min="1" inputmode="numeric" class="small-text" />
+					<button type="button" class="button" id="epay-follow-up-test">
+						<span class="dashicons dashicons-search" aria-hidden="true"></span>
+						<span><?php echo esc_html__( 'Verify follow-up channel', 'resilient-gateway-for-epay-paycenter' ); ?></span>
+					</button>
+				</div>
+				<div class="epay-waftest__result" id="epay-follow-up-result" role="status" aria-live="polite"></div>
+			</div>
 		</section>
 		<?php
 	}
@@ -2120,23 +1899,23 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			<div class="epay-card__header">
 				<span class="dashicons dashicons-shield-alt" aria-hidden="true"></span>
 				<h3 id="epay-waftest-title" class="epay-card__title">
-					<?php echo esc_html__( 'Callback diagnostics', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+					<?php echo esc_html__( 'Callback diagnostics', 'resilient-gateway-for-epay-paycenter' ); ?>
 				</h3>
 				<span class="epay-card__subtitle">
-					<?php echo esc_html__( 'Detect host-WAF interception before going live', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+					<?php echo esc_html__( 'Detect host-WAF interception before going live', 'resilient-gateway-for-epay-paycenter' ); ?>
 				</span>
 			</div>
 			<div class="epay-card__body">
 				<p class="epay-techdata__notice">
-					<?php echo esc_html__( 'Some shared-hosting firewalls (cPFence, ModSecurity / OWASP CRS, Imunify360, BitNinja, LiteSpeed WAF) can intercept the Paycenter failure callbacks because their payloads contain patterns (dash-only TransactionDateTime, Greek error text, empty HashKey on declined transactions) that look like attack signatures. The test below issues a realistic declined-transaction POST from this WordPress server to the plugin\'s own callback URL and reports whether it is blocked before it reaches PHP. No order is created or modified; the synthetic payload carries a WAFTEST- merchant reference that no order in the database can match.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+					<?php echo esc_html__( 'Some shared-hosting firewalls (cPFence, ModSecurity / OWASP CRS, Imunify360, BitNinja, LiteSpeed WAF) can intercept the Paycenter failure callbacks because their payloads contain patterns (dash-only TransactionDateTime, Greek error text, empty HashKey on declined transactions) that look like attack signatures. The test below issues a realistic declined-transaction POST from this WordPress server to the plugin\'s own callback URL and reports whether it is blocked before it reaches PHP. No order is created or modified; the synthetic payload carries a WAFTEST- merchant reference that no order in the database can match.', 'resilient-gateway-for-epay-paycenter' ); ?>
 				</p>
 				<p class="epay-techdata__hint">
-					<?php echo esc_html__( 'Scope: this exercises your local webserver / host WAF (ModSecurity, cPFence, Imunify360, BitNinja, LiteSpeed). CDN-level WAFs that sit in front of your origin (Cloudflare, Sucuri, Akamai) are not exercised by the loopback POST; their rules must be tested with an external probe.', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?>
+					<?php echo esc_html__( 'Scope: this exercises your local webserver / host WAF (ModSecurity, cPFence, Imunify360, BitNinja, LiteSpeed). CDN-level WAFs that sit in front of your origin (Cloudflare, Sucuri, Akamai) are not exercised by the loopback POST; their rules must be tested with an external probe.', 'resilient-gateway-for-epay-paycenter' ); ?>
 				</p>
 				<div class="epay-waftest__controls">
 					<button type="button" class="button button-primary" id="epay-waftest-run">
 						<span class="dashicons dashicons-update" aria-hidden="true"></span>
-						<span class="epay-waftest__btn-label"><?php echo esc_html__( 'Test callback URL', 'secure-card-gateway-for-epay-paycenter-piraeus-bank' ); ?></span>
+						<span class="epay-waftest__btn-label"><?php echo esc_html__( 'Test callback URL', 'resilient-gateway-for-epay-paycenter' ); ?></span>
 					</button>
 				</div>
 				<div class="epay-waftest__result" id="epay-waftest-result" role="status" aria-live="polite"></div>

@@ -10,7 +10,6 @@
 	--epay-green: #0e382d;
 	--epay-green-soft: #1f5b48;
 	--epay-gold: #fed800;
-	--epay-gold-deep: #d6be07;
 	--epay-border: #dcdcde;
 	--epay-bg: #ffffff;
 	--epay-bg-soft: #f6f7f7;
@@ -54,24 +53,6 @@
 	opacity: .08;
 	border-radius: 50%;
 	pointer-events: none;
-}
-
-.epay-admin__logo {
-	flex: 0 0 auto;
-	background: #ffffff;
-	border-radius: 8px;
-	padding: 8px 12px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, .12);
-}
-
-.epay-admin__logo img {
-	display: block;
-	width: 180px;
-	height: 60px;
-	object-fit: contain;
 }
 
 .epay-admin__title {
@@ -258,12 +239,6 @@
 	background: var(--epay-success);
 	color: #ffffff;
 	border-color: var(--epay-success);
-}
-
-.epay-copy__hint {
-	margin: 6px 0 0;
-	font-size: 12px;
-	color: var(--epay-text-soft);
 }
 
 /* ------------------------------------------------------------------
@@ -578,7 +553,15 @@ details.epay-techdata__notice--cloudflare > *:not(summary) {
  * Callback diagnostics / WAF self-test card
  * ------------------------------------------------------------------ */
 .epay-admin .epay-waftest__controls {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
 	margin: 12px 0 6px;
+}
+
+.epay-admin .epay-follow-up__controls label {
+	font-weight: 600;
 }
 
 .epay-admin .epay-waftest__controls .button .dashicons {

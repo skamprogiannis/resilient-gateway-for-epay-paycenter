@@ -22,7 +22,9 @@
 			return;
 		}
 		window.setTimeout( function () {
-			form.submit();
+			if ( form instanceof HTMLFormElement ) {
+				form.submit();
+			}
 		}, 100 );
 	}
 

@@ -17,6 +17,9 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Ticketing Web Service client.
+ *
+ * @phpstan-type TicketRequest array{Username:string, Password:string, MerchantId:string, PosId:string, AcquirerId:string, MerchantReference:string, RequestType:string, ExpirePreauth:string, Amount:string, Installments:string, CurrencyCode:string, Bnpl:string, Parameters:string, BillAddrCity?:string, BillAddrCountry?:string, BillAddrLine1?:string, BillAddrLine2?:string, BillAddrLine3?:string, BillAddrPostCode?:string, BillAddrState?:string, ShipAddrCity?:string, ShipAddrCountry?:string, ShipAddrLine1?:string, ShipAddrLine2?:string, ShipAddrLine3?:string, ShipAddrPostCode?:string, ShipAddrState?:string, CardholderName?:string, Email?:string, HomePhone?:string, MobilePhone?:string, WorkPhone?:string}
+ * @phpstan-type TicketResult array{success:bool, tran_ticket:string, result_code:string, description:string, minutes:int, error:string}
  */
 class Epay_Paycenter_Ticketing {
 
@@ -35,6 +38,9 @@ class Epay_Paycenter_Ticketing {
 	 * SOAP action header value expected by ASMX services.
 	 */
 	const SOAP_ACTION = 'http://piraeusbank.gr/paycenter/redirection/IssueNewTicket';
+
+	/** Maximum SOAP response accepted from the external service. */
+	const MAX_RESPONSE_BYTES = 262144;
 
 	/**
 	 * Parameter keys that are transmitted through the SOAP request.
@@ -86,14 +92,8 @@ class Epay_Paycenter_Ticketing {
 	 * as required by the manual.
 	 *
 	 * @param array $request Associative array of request parameters.
-	 * @return array {
-	 *     @type bool   $success      Whether the call succeeded and ResultCode is 0.
-	 *     @type string $tran_ticket  TranTicket if success.
-	 *     @type string $result_code  Result code (string, as in manual).
-	 *     @type string $description  ResultDescription from the API.
-	 *     @type int    $minutes      MinutesToExpiration if success.
-	 *     @type string $error        Technical error message when success=false.
-	 * }
+	 * @phpstan-param TicketRequest $request
+	 * @return TicketResult
 	 */
 	public function issue_ticket( array $request ) {
 		$filtered = array();
@@ -105,46 +105,50 @@ class Epay_Paycenter_Ticketing {
 
 		$envelope = $this->build_envelope( $filtered );
 
-		$response = wp_remote_post(
-			self::ENDPOINT,
-			array(
-				'timeout'     => 30,
-				'redirection' => 0,
-				'httpversion' => '1.1',
-				'sslverify'   => true,
-				'headers'     => array(
-					'Content-Type' => 'text/xml; charset=utf-8',
-					'SOAPAction'   => '"' . self::SOAP_ACTION . '"',
-					'Accept'       => 'text/xml',
-				),
-				'body'        => $envelope,
-			)
-		);
-
-		if ( is_wp_error( $response ) ) {
-			Epay_Paycenter_Logger::error( 'Ticketing HTTP error', array( 'error' => $response->get_error_message() ) );
-			return array(
-				'success'     => false,
-				'result_code' => '',
-				'description' => '',
-				'error'       => $response->get_error_message(),
+		try {
+			$response = wp_remote_post(
+				self::ENDPOINT,
+				array(
+					'timeout'     => 30,
+					'redirection' => 0,
+					'httpversion' => '1.1',
+					'sslverify'   => true,
+					'headers'     => array(
+						'Content-Type' => 'text/xml; charset=utf-8',
+						'SOAPAction'   => '"' . self::SOAP_ACTION . '"',
+						'Accept'       => 'text/xml',
+					),
+					'body'        => $envelope,
+				)
 			);
+		} catch ( Throwable $error ) {
+			Epay_Paycenter_Logger::error( 'Ticketing transport raised an unexpected error.' );
+			return $this->error_result( 'Ticketing service request failed' );
 		}
 
-		$http_code = (int) wp_remote_retrieve_response_code( $response );
-		$body      = (string) wp_remote_retrieve_body( $response );
+		if ( is_wp_error( $response ) ) {
+			Epay_Paycenter_Logger::error( 'Ticketing HTTP request failed.' );
+			return $this->error_result( 'Ticketing service request failed' );
+		}
+
+		try {
+			$http_code = (int) wp_remote_retrieve_response_code( $response );
+			$body      = (string) wp_remote_retrieve_body( $response );
+		} catch ( Throwable $error ) {
+			Epay_Paycenter_Logger::error( 'Ticketing response could not be read.' );
+			return $this->error_result( 'Invalid ticketing service response' );
+		}
 
 		if ( 200 !== $http_code ) {
 			Epay_Paycenter_Logger::error(
 				'Ticketing unexpected HTTP status',
 				array( 'status' => $http_code )
 			);
-			return array(
-				'success'     => false,
-				'result_code' => (string) $http_code,
-				'description' => 'Unexpected HTTP status ' . $http_code,
-				'error'       => 'HTTP ' . $http_code,
-			);
+			return $this->error_result( 'Ticketing service returned an unexpected HTTP status', (string) $http_code );
+		}
+		if ( '' === $body || strlen( $body ) > self::MAX_RESPONSE_BYTES ) {
+			Epay_Paycenter_Logger::error( 'Ticketing response was empty or exceeded the size limit.' );
+			return $this->error_result( 'Invalid SOAP response' );
 		}
 
 		return $this->parse_response( $body );
@@ -154,7 +158,7 @@ class Epay_Paycenter_Ticketing {
 	 * Build the SOAP 1.1 envelope. All user input is passed through
 	 * htmlspecialchars() with UTF-8 to neutralise XML control characters.
 	 *
-	 * @param array $fields Filtered fields.
+	 * @param array<string,string> $fields Filtered fields.
 	 * @return string
 	 */
 	private function build_envelope( array $fields ) {
@@ -181,7 +185,7 @@ class Epay_Paycenter_Ticketing {
 	/**
 	 * Escape a string for use as element text content.
 	 *
-	 * @param mixed $value Value.
+	 * @param string $value Value.
 	 * @return string
 	 */
 	private function xml_text( $value ) {
@@ -206,54 +210,31 @@ class Epay_Paycenter_Ticketing {
 	 * potentially compromised / spoofed response.
 	 *
 	 * @param string $body Response body.
-	 * @return array
+	 * @return TicketResult
 	 */
 	private function parse_response( $body ) {
 		$prev_internal = libxml_use_internal_errors( true );
 
-		// XXE defence: this plugin requires PHP 7.4 or later. Since libxml
-		// 2.9.0 (which predates PHP 7.4) external entities are disabled by
-		// default, and PHP 8.0 deprecated `libxml_disable_entity_loader()`
-		// entirely - it is a no-op on every supported runtime. We rely on:
-		//
-		//   * LIBXML_NONET     - blocks any network-based entity / DTD load.
-		//   * The default libxml policy of NOT substituting external entities
-		//     (LIBXML_NOENT is deliberately NOT passed; setting it would
-		//     enable entity substitution, the exact opposite of what we
-		//     want for hardening against XXE).
-		//   * The post-parse loop below, which rejects any document that
-		//     declares a DTD even when the parser accepted it.
-		//
-		// This combination satisfies the workspace XXE-prevention rule
-		// (DTDs disabled, external entities not resolved, network entity
-		// resolution blocked) without invoking the removed/deprecated
-		// `libxml_disable_entity_loader()` function flagged by the
-		// WordPress Plugin Review Team.
-		$dom                     = new DOMDocument();
-		$dom->preserveWhiteSpace = false;
-		$options                 = LIBXML_NONET;
-		$loaded                  = $dom->loadXML( $body, $options );
+		// Disable network/entity expansion and reject DTD-bearing responses.
+		$dom = new DOMDocument();
+		try {
+			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Native DOM API property.
+			$dom->preserveWhiteSpace = false;
+			$loaded                  = $dom->loadXML( $body, LIBXML_NONET );
 
-		// Post-parse XXE / DTD defence: reject any document declaring a DTD.
-		if ( $loaded ) {
-			foreach ( $dom->childNodes as $child ) {
-				if ( XML_DOCUMENT_TYPE_NODE === $child->nodeType ) {
-					$loaded = false;
-					break;
-				}
+			// Reject every document that declares a DTD, even if libxml parsed it.
+			if ( $loaded ) {
+				$loaded = null === $dom->doctype;
 			}
+		} catch ( Throwable $error ) {
+			$loaded = false;
+		} finally {
+			libxml_clear_errors();
+			libxml_use_internal_errors( $prev_internal );
 		}
 
-		libxml_clear_errors();
-		libxml_use_internal_errors( $prev_internal );
-
 		if ( ! $loaded ) {
-			return array(
-				'success'     => false,
-				'result_code' => '',
-				'description' => 'Invalid SOAP response',
-				'error'       => 'Could not parse SOAP response',
-			);
+			return $this->error_result( 'Could not parse SOAP response' );
 		}
 
 		$xpath = new DOMXPath( $dom );
@@ -262,56 +243,73 @@ class Epay_Paycenter_Ticketing {
 
 		$fault = $xpath->query( '//soap:Fault/faultstring' );
 		if ( $fault && $fault->length > 0 ) {
-			$message = trim( $fault->item( 0 )->textContent );
-			return array(
-				'success'     => false,
-				'result_code' => '',
-				'description' => $message,
-				'error'       => $message,
-			);
+			Epay_Paycenter_Logger::error( 'Ticketing service returned a SOAP fault.' );
+			return $this->error_result( 'Ticketing service returned a SOAP fault' );
 		}
 
-		$result = $this->node_text( $xpath, '//pb:IssueNewTicketResult/pb:ResultCode' );
-		if ( '' === $result ) {
-			$result = $this->node_text( $xpath, "//*[local-name()='IssueNewTicketResult']/*[local-name()='ResultCode']" );
+		$result_nodes = $xpath->query( "//*[local-name()='IssueNewTicketResult']" );
+		if ( ! $result_nodes || 1 !== $result_nodes->length ) {
+			return $this->error_result( 'Invalid SOAP response structure' );
 		}
-		$description = $this->node_text( $xpath, '//pb:IssueNewTicketResult/pb:ResultDescription' );
-		if ( '' === $description ) {
-			$description = $this->node_text( $xpath, "//*[local-name()='IssueNewTicketResult']/*[local-name()='ResultDescription']" );
+		$result_node = $result_nodes->item( 0 );
+		if ( ! $result_node instanceof DOMElement ) {
+			return $this->error_result( 'Invalid SOAP response structure' );
 		}
-		$ticket = $this->node_text( $xpath, '//pb:IssueNewTicketResult/pb:TranTicket' );
-		if ( '' === $ticket ) {
-			$ticket = $this->node_text( $xpath, "//*[local-name()='IssueNewTicketResult']/*[local-name()='TranTicket']" );
-		}
-		$minutes = $this->node_text( $xpath, '//pb:IssueNewTicketResult/pb:MinutesToExpiration' );
-		if ( '' === $minutes ) {
-			$minutes = $this->node_text( $xpath, "//*[local-name()='IssueNewTicketResult']/*[local-name()='MinutesToExpiration']" );
+		$result      = $this->child_text( $xpath, $result_node, 'ResultCode' );
+		$description = $this->child_text( $xpath, $result_node, 'ResultDescription' );
+		$ticket      = $this->child_text( $xpath, $result_node, 'TranTicket' );
+		$minutes     = $this->child_text( $xpath, $result_node, 'MinutesToExpiration' );
+		if ( ! ctype_digit( $result ) || strlen( $ticket ) > 128 || ( '' !== $minutes && ! ctype_digit( $minutes ) ) ) {
+			return $this->error_result( 'Invalid SOAP response fields' );
 		}
 
-		$success = ( '0' === $result && '' !== $ticket );
+		$success          = ( '0' === $result && '' !== $ticket );
+		$safe_description = substr( sanitize_text_field( $description ), 0, 255 );
 
 		return array(
 			'success'     => $success,
 			'tran_ticket' => $success ? $ticket : '',
 			'result_code' => $result,
-			'description' => $description,
+			'description' => $safe_description,
 			'minutes'     => (int) $minutes,
-			'error'       => $success ? '' : $description,
+			'error'       => $success ? '' : $safe_description,
 		);
 	}
 
 	/**
-	 * Get the text contents of the first node matching an XPath expression.
+	 * Read one direct child of the unique response result element.
 	 *
-	 * @param DOMXPath $xpath   XPath helper.
-	 * @param string   $query  XPath query.
+	 * @param DOMXPath $xpath XPath instance.
+	 * @param DOMNode  $element Result element.
+	 * @param string   $name Child element name.
 	 * @return string
 	 */
-	private function node_text( DOMXPath $xpath, $query ) {
-		$nodes = $xpath->query( $query );
-		if ( ! $nodes || 0 === $nodes->length ) {
+	private function child_text( DOMXPath $xpath, DOMNode $element, $name ) {
+		$nodes = $xpath->query( "./*[local-name()='" . $name . "']", $element );
+		if ( ! $nodes || 1 !== $nodes->length ) {
 			return '';
 		}
-		return trim( (string) $nodes->item( 0 )->textContent );
+		$node = $nodes->item( 0 );
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Native DOM API property.
+		return $node instanceof DOMElement ? trim( $node->textContent ) : '';
+	}
+
+	/**
+	 * Build a consistent failure result without exposing transport internals.
+	 *
+	 * @param string $message Operational error.
+	 * @param string $result_code Bank result code, when available.
+	 * @return TicketResult
+	 */
+	private function error_result( $message, $result_code = '' ) {
+		$message = substr( sanitize_text_field( (string) $message ), 0, 255 );
+		return array(
+			'success'     => false,
+			'tran_ticket' => '',
+			'result_code' => (string) $result_code,
+			'description' => $message,
+			'minutes'     => 0,
+			'error'       => $message,
+		);
 	}
 }

@@ -1,0 +1,26 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: 8
+    phpVersion: 70400
+    paths:
+        - resilient-gateway-for-epay-paycenter.php
+        - uninstall.php
+        - includes
+        - templates
+    bootstrapFiles:
+        - analysis/phpstan-bootstrap.php
+    excludePaths:
+        analyse:
+            - languages
+            - vendor
+    scanFiles:
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+    stubFiles:
+        - analysis/woocommerce.stub
+    checkMissingCallableSignature: true
+    reportUnmatchedIgnoredErrors: true
+    treatPhpDocTypesAsCertain: true
+    parallel:
+        maximumNumberOfProcesses: 1

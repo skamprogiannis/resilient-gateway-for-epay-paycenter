@@ -1,0 +1,38 @@
+{
+  "name": "skamprogiannis/resilient-gateway-for-epay-paycenter",
+  "description": "A resilient WooCommerce gateway for the ePay Paycenter Redirection sale flow.",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=7.4"
+  },
+  "require-dev": {
+    "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+    "php-stubs/woocommerce-stubs": "^10.0",
+    "phpstan/phpstan": "^2.1",
+    "szepeviktor/phpstan-wordpress": "^2.0",
+    "wp-coding-standards/wpcs": "^3.4.1"
+  },
+  "config": {
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    },
+    "sort-packages": true
+  },
+  "scripts": {
+    "analyse": "phpstan analyse --configuration=phpstan.neon --memory-limit=2G --no-progress",
+    "check:dependencies": [
+      "php scripts/check-dependencies.php --self-test",
+      "php scripts/check-dependencies.php"
+    ],
+    "check:public-history": "bash scripts/check-public-history.sh",
+    "check:public-tree": "bash scripts/check-public-tree.sh",
+    "lint:php": "phpcs --standard=phpcs.xml.dist",
+    "test": [
+      "@check:dependencies",
+      "@check:public-tree",
+      "@analyse",
+      "@lint:php"
+    ]
+  }
+}

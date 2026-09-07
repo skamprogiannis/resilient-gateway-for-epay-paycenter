@@ -17,7 +17,7 @@
 	font-size: 0.9em;
 }
 
-/* --- Checkout: accepted card-brands image (classic + blocks) --- */
+/* Optional checkout icon supplied through the epay_paycenter_icon filter. */
 .epay-paycenter-icon {
 	display: block;
 	margin: 0.75em 0;

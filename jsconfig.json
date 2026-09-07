@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "lib": ["DOM", "ES2020"],
+    "module": "none",
+    "noEmit": true,
+    "noImplicitAny": true,
+    "strict": true,
+    "target": "ES2020"
+  },
+  "include": ["assets/js/**/*.js", "types/**/*.d.ts"]
+}

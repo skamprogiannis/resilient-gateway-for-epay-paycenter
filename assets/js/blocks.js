@@ -7,9 +7,10 @@
  * and description shown at checkout.
  */
 ( function () {
+	/** @type {EpayBlocksSettings} */
 	var settings = ( window.wc && window.wc.wcSettings && window.wc.wcSettings.getSetting )
-		? window.wc.wcSettings.getSetting( 'epay_paycenter_data', {} )
-		: {};
+		? window.wc.wcSettings.getSetting( 'epay_paycenter_data', { description: '', icon: '', supports: [], title: '' } )
+		: { description: '', icon: '', supports: [], title: '' };
 
 	var registerPaymentMethod = ( window.wc && window.wc.wcBlocksRegistry )
 		? window.wc.wcBlocksRegistry.registerPaymentMethod
@@ -22,20 +23,23 @@
 	var createElement = ( window.wp && window.wp.element ) ? window.wp.element.createElement : null;
 	var decodeEntities = ( window.wp && window.wp.htmlEntities && window.wp.htmlEntities.decodeEntities )
 		? window.wp.htmlEntities.decodeEntities
-		: function ( v ) { return v; };
+		: function ( /** @type {string} */ value ) { return value; };
 
 	var title       = decodeEntities( settings.title || 'Credit / Debit Card (Piraeus Bank)' );
 	var description = decodeEntities( settings.description || '' );
 	var iconUrl     = settings.icon || '';
 
+	/** @returns {EpayRenderable} */
 	var Label = function () {
 		if ( ! createElement ) { return title; }
 		return createElement( 'span', null, title );
 	};
 
+	/** @returns {EpayRenderable} */
 	var Content = function () {
 		if ( ! createElement ) { return description; }
 
+		/** @type {EpayRenderable[]} */
 		var children = [];
 
 		if ( iconUrl ) {

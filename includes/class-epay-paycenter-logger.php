@@ -18,15 +18,19 @@ class Epay_Paycenter_Logger {
 	 * @var string[]
 	 */
 	private static $sensitive_keys = array(
-		'Password',
-		'pb_Password',
+		'authorization',
+		'cardnumber',
+		'cookie',
+		'cvc',
+		'cvv',
+		'hashkey',
+		'pan',
 		'password',
-		'TranTicket',
-		'tran_ticket',
-		'HashKey',
-		'User',
-		'Username',
-		'Authorization',
+		'secret',
+		'ticket',
+		'token',
+		'user',
+		'username',
 	);
 
 	/**
@@ -41,6 +45,7 @@ class Epay_Paycenter_Logger {
 	 *
 	 * @param string $message Message.
 	 * @param mixed  $context Optional structured context.
+	 * @return void
 	 */
 	public static function info( $message, $context = null ) {
 		self::write( 'info', $message, $context );
@@ -51,6 +56,7 @@ class Epay_Paycenter_Logger {
 	 *
 	 * @param string $message Message.
 	 * @param mixed  $context Optional structured context.
+	 * @return void
 	 */
 	public static function error( $message, $context = null ) {
 		self::write( 'error', $message, $context );
@@ -75,6 +81,7 @@ class Epay_Paycenter_Logger {
 	 *
 	 * @param string $message Message.
 	 * @param mixed  $context Optional structured context.
+	 * @return void
 	 */
 	public static function debug( $message, $context = null ) {
 		if ( ! self::debug_enabled() ) {
@@ -125,20 +132,25 @@ class Epay_Paycenter_Logger {
 	 * @param string $level   Level.
 	 * @param string $message Message.
 	 * @param mixed  $context Context.
+	 * @return void
 	 */
 	private static function write( $level, $message, $context ) {
-		if ( ! function_exists( 'wc_get_logger' ) ) {
-			return;
+		try {
+			if ( ! function_exists( 'wc_get_logger' ) ) {
+				return;
+			}
+			$logger = wc_get_logger();
+			$line   = self::redact_string( (string) $message );
+			if ( null !== $context ) {
+				$encoded = wp_json_encode( self::redact( $context ) );
+				$line   .= false === $encoded ? ' [context unavailable]' : ' ' . $encoded;
+			}
+			$logger->log( in_array( $level, array( 'debug', 'info', 'error' ), true ) ? $level : 'error', $line, array( 'source' => 'epay-paycenter' ) );
+		} catch ( Throwable $error ) {
+			// Payment processing must not fail because an optional logger failed.
+			// No external values or exception messages are copied to this fallback.
+			error_log( 'ePay Paycenter logging failed.' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 		}
-		$logger = wc_get_logger();
-		if ( ! $logger ) {
-			return;
-		}
-		$line = $message;
-		if ( null !== $context ) {
-			$line .= ' ' . wp_json_encode( self::redact( $context ) );
-		}
-		$logger->log( $level, $line, array( 'source' => 'epay-paycenter' ) );
 	}
 
 	/**
@@ -149,19 +161,55 @@ class Epay_Paycenter_Logger {
 	 */
 	public static function redact( $data ) {
 		if ( is_object( $data ) ) {
-			$data = (array) $data;
+			return array( 'type' => get_class( $data ) );
 		}
 		if ( ! is_array( $data ) ) {
-			return $data;
+			return is_string( $data ) ? self::redact_string( $data ) : $data;
 		}
 		$clean = array();
 		foreach ( $data as $key => $value ) {
-			if ( is_string( $key ) && in_array( $key, self::$sensitive_keys, true ) ) {
+			if ( is_string( $key ) && self::is_sensitive_key( $key ) ) {
 				$clean[ $key ] = '***REDACTED***';
 				continue;
 			}
-			$clean[ $key ] = is_array( $value ) || is_object( $value ) ? self::redact( $value ) : $value;
+			$clean[ $key ] = self::redact( $value );
 		}
 		return $clean;
+	}
+
+	/**
+	 * Match sensitive keys case-insensitively across common separators.
+	 *
+	 * @param string $key Context key.
+	 * @return bool
+	 */
+	private static function is_sensitive_key( $key ) {
+		$normalised = preg_replace( '/[^a-z0-9]+/i', '', $key );
+		if ( null === $normalised ) {
+			return true;
+		}
+		$normalised = strtolower( $normalised );
+		foreach ( self::$sensitive_keys as $sensitive ) {
+			if ( false !== strpos( $normalised, $sensitive ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Redact likely card numbers and reusable digests from free-form strings.
+	 *
+	 * @param string $value Free-form log value.
+	 * @return string
+	 */
+	private static function redact_string( $value ) {
+		$value = substr( sanitize_text_field( (string) $value ), 0, 2000 );
+		$value = preg_replace( '/\b(?:\d[ -]*?){13,19}\b/', '***REDACTED***', $value );
+		if ( null === $value ) {
+			return '[redacted]';
+		}
+		$value = preg_replace( '/\b[a-f0-9]{32,64}\b/i', '***REDACTED***', $value );
+		return is_string( $value ) ? $value : '[redacted]';
 	}
 }

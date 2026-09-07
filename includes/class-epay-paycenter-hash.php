@@ -45,8 +45,8 @@ class Epay_Paycenter_Hash {
 	/**
 	 * Calculate the expected HashKey for a response.
 	 *
-	 * @param array $fields Associative array of the 11 fields listed in $fields.
-	 *                      Missing entries are treated as empty strings.
+	 * @param array<string, string> $fields Associative array of response fields.
+	 *                                      Missing entries are treated as empty strings.
 	 * @return string 64-character uppercase hexadecimal HMAC-SHA256 digest.
 	 */
 	public static function calculate( array $fields ) {
@@ -65,12 +65,12 @@ class Epay_Paycenter_Hash {
 	/**
 	 * Verify a received HashKey against expected values in timing-safe fashion.
 	 *
-	 * @param string $received   The HashKey returned by Paycenter.
-	 * @param array  $fields     Field values used to recompute the hash locally.
+	 * @param string                $received The HashKey returned by Paycenter.
+	 * @param array<string, string> $fields   Field values used to recompute the hash locally.
 	 * @return bool True when both hashes match.
 	 */
 	public static function verify( $received, array $fields ) {
-		$received = is_string( $received ) ? strtoupper( $received ) : '';
+		$received = strtoupper( $received );
 		if ( '' === $received || strlen( $received ) !== 64 ) {
 			return false;
 		}

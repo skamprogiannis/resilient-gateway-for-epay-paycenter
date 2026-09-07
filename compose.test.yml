@@ -1,0 +1,59 @@
+name: epay-qualification
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: qualification
+      MYSQL_ROOT_PASSWORD: qualification
+    volumes:
+      - database:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uwordpress", "-pqualification"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  wordpress:
+    image: wordpress:php8.0-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: &wordpress-environment
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: qualification
+      WORDPRESS_TABLE_PREFIX: wp_
+      WORDPRESS_DEBUG: "1"
+      WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_ENVIRONMENT_TYPE', 'local');
+        define('EPAY_TEST_FIXTURES', true);
+        define('DISABLE_WP_CRON', true);
+        define('WP_DEBUG_LOG', true);
+        define('WP_DEBUG_DISPLAY', false);
+    ports:
+      - "127.0.0.1:8081:80"
+    volumes: &wordpress-volumes
+      - site:/var/www/html
+      - ${EPAY_TEST_PLUGIN_SOURCE:-.}:/var/www/html/wp-content/plugins/resilient-gateway-for-epay-paycenter:ro
+      - ./tests/fixtures:/qualification-fixtures:ro
+      - ./tests/fixtures/epay-test-safety.php:/var/www/html/wp-content/mu-plugins/epay-test-safety.php:ro
+      - ./tests/fixtures/epay-test-http.php:/var/www/html/wp-content/mu-plugins/epay-test-http.php:ro
+      - ./tests/fixtures/epay-test-api.php:/var/www/html/wp-content/mu-plugins/epay-test-api.php:ro
+      - ./tests/fixtures/epay-test-layouts.php:/var/www/html/wp-content/mu-plugins/epay-test-layouts.php:ro
+  wpcli:
+    image: wordpress:cli-php8.0
+    user: "33:33"
+    depends_on:
+      db:
+        condition: service_healthy
+      wordpress:
+        condition: service_started
+    environment: *wordpress-environment
+    volumes: *wordpress-volumes
+    working_dir: /var/www/html
+volumes:
+  database:
+  site:
