@@ -1,0 +1,680 @@
+/**
+ * Admin settings styles for the ePay Paycenter (Piraeus Bank) gateway.
+ *
+ * Scoped under `.epay-admin` to avoid leaking into other WooCommerce
+ * settings screens. Uses WordPress Dashicons (bundled with core) so no
+ * external fonts / icons / images are required.
+ */
+
+.epay-admin {
+	--epay-green: #0e382d;
+	--epay-green-soft: #1f5b48;
+	--epay-gold: #fed800;
+	--epay-gold-deep: #d6be07;
+	--epay-border: #dcdcde;
+	--epay-bg: #ffffff;
+	--epay-bg-soft: #f6f7f7;
+	--epay-text: #1d2327;
+	--epay-text-soft: #50575e;
+	--epay-success: #00a32a;
+	--epay-warning: #dba617;
+	--epay-danger: #d63638;
+	--epay-info: #2271b1;
+
+	margin: 16px 0 24px;
+	color: var(--epay-text);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+/* ------------------------------------------------------------------
+ * Header banner
+ * ------------------------------------------------------------------ */
+.epay-admin__header {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 18px;
+	padding: 22px 24px;
+	background: linear-gradient(135deg, var(--epay-green) 0%, var(--epay-green-soft) 100%);
+	color: #ffffff;
+	border-radius: 8px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+	overflow: hidden;
+}
+
+.epay-admin__header::after {
+	content: "";
+	position: absolute;
+	top: -40px;
+	right: -40px;
+	width: 160px;
+	height: 160px;
+	background: var(--epay-gold);
+	opacity: .08;
+	border-radius: 50%;
+	pointer-events: none;
+}
+
+.epay-admin__logo {
+	flex: 0 0 auto;
+	background: #ffffff;
+	border-radius: 8px;
+	padding: 8px 12px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, .12);
+}
+
+.epay-admin__logo img {
+	display: block;
+	width: 180px;
+	height: 60px;
+	object-fit: contain;
+}
+
+.epay-admin__title {
+	margin: 0 0 4px;
+	color: #ffffff;
+	font-size: 20px;
+	font-weight: 600;
+	line-height: 1.2;
+}
+
+.epay-admin__subtitle {
+	margin: 0;
+	color: rgba(255, 255, 255, .82);
+	font-size: 13px;
+}
+
+.epay-admin__version {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 2px 8px;
+	background: rgba(255, 255, 255, .18);
+	border-radius: 10px;
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: .3px;
+}
+
+/* ------------------------------------------------------------------
+ * Grid layout (main + sidebar)
+ * ------------------------------------------------------------------ */
+.epay-admin__grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 300px;
+	gap: 20px;
+	margin-top: 20px;
+}
+
+@media (max-width: 960px) {
+	.epay-admin__grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.epay-admin__main,
+.epay-admin__sidebar {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+/* ------------------------------------------------------------------
+ * Cards
+ * ------------------------------------------------------------------ */
+.epay-card {
+	background: var(--epay-bg);
+	border: 1px solid var(--epay-border);
+	border-radius: 6px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, .04);
+}
+
+.epay-card__header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 18px;
+	border-bottom: 1px solid var(--epay-border);
+	background: var(--epay-bg-soft);
+	border-radius: 6px 6px 0 0;
+}
+
+.epay-card__header .dashicons {
+	color: var(--epay-green);
+	font-size: 18px;
+	width: 18px;
+	height: 18px;
+}
+
+.epay-card__title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--epay-text);
+}
+
+.epay-card__subtitle {
+	margin: 0 0 0 auto;
+	font-size: 12px;
+	color: var(--epay-text-soft);
+}
+
+.epay-card__body {
+	padding: 14px 18px 18px;
+}
+
+.epay-card__body > p:first-child {
+	margin-top: 0;
+}
+
+.epay-card__body .form-table {
+	margin-top: 0;
+}
+
+.epay-card__body .form-table th {
+	padding-left: 0;
+}
+
+/* Callback-URLs block: textarea on the left, single Copy button on the
+   right (overrides the default column layout of .epay-copy--block so the
+   button sits beside the textarea instead of below it). */
+.epay-techdata__group--urls .epay-copy--block {
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 8px;
+}
+
+.epay-techdata__group--urls .epay-copy__textarea {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.epay-techdata__group--urls .epay-copy__btn {
+	flex: 0 0 auto;
+	align-self: stretch;
+}
+
+/* ------------------------------------------------------------------
+ * Copy field (callback URL)
+ * ------------------------------------------------------------------ */
+.epay-copy {
+	display: flex;
+	align-items: stretch;
+	gap: 0;
+	margin-top: 6px;
+}
+
+.epay-copy__input {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 8px 10px;
+	border: 1px solid var(--epay-border);
+	border-right: 0;
+	border-radius: 4px 0 0 4px;
+	background: var(--epay-bg-soft);
+	font-family: Consolas, Monaco, "Courier New", monospace;
+	font-size: 12px;
+	color: var(--epay-text);
+}
+
+.epay-copy__input:focus {
+	outline: 1px solid var(--epay-info);
+	outline-offset: -1px;
+}
+
+.epay-copy__btn {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 12px;
+	border: 1px solid var(--epay-border);
+	border-radius: 0 4px 4px 0;
+	background: #ffffff;
+	color: var(--epay-text);
+	font-size: 12px;
+	cursor: pointer;
+	transition: background .15s ease, color .15s ease;
+}
+
+.epay-copy__btn:hover,
+.epay-copy__btn:focus {
+	background: var(--epay-green);
+	color: #ffffff;
+	border-color: var(--epay-green);
+	outline: 0;
+}
+
+.epay-copy__btn .dashicons {
+	font-size: 14px;
+	width: 14px;
+	height: 14px;
+}
+
+.epay-copy__btn[data-copied="1"] {
+	background: var(--epay-success);
+	color: #ffffff;
+	border-color: var(--epay-success);
+}
+
+.epay-copy__hint {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: var(--epay-text-soft);
+}
+
+/* ------------------------------------------------------------------
+ * Environment badge
+ * ------------------------------------------------------------------ */
+.epay-env-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: auto;
+	padding: 2px 8px;
+	border-radius: 10px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: .3px;
+	text-transform: uppercase;
+}
+
+.epay-env-badge--test {
+	background: rgba(219, 166, 23, .15);
+	color: #8a6100;
+}
+
+.epay-env-badge--live {
+	background: rgba(0, 163, 42, .12);
+	color: #006b1b;
+}
+
+/* ------------------------------------------------------------------
+ * Bank integration technical-data list
+ * ------------------------------------------------------------------ */
+.epay-techdata {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.epay-techdata__notice {
+	margin: 0;
+	padding: 10px 12px;
+	background: #fcf9e4;
+	border-left: 3px solid var(--epay-warning);
+	border-radius: 4px;
+	font-size: 12px;
+	color: #5a4600;
+}
+
+.epay-techdata__group {
+	display: grid;
+	gap: 14px;
+}
+
+@media (min-width: 720px) {
+	.epay-techdata__group--split {
+		grid-template-columns: 1fr 1fr;
+	}
+}
+
+.epay-techdata__row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+
+.epay-techdata__label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--epay-text);
+}
+
+.epay-techdata__label .dashicons {
+	color: var(--epay-green);
+	font-size: 16px;
+	width: 16px;
+	height: 16px;
+}
+
+.epay-techdata__static {
+	display: block;
+	padding: 8px 10px;
+	background: var(--epay-bg-soft);
+	border: 1px solid var(--epay-border);
+	border-radius: 4px;
+	font-family: Consolas, Monaco, "Courier New", monospace;
+	font-size: 12px;
+	color: var(--epay-text);
+	word-break: break-all;
+}
+
+.epay-techdata__hint {
+	margin: 2px 0 0;
+	font-size: 11px;
+	line-height: 1.4;
+	color: var(--epay-text-soft);
+}
+
+/* Cloudflare-specific notice variant. Blue info-style box with an
+   orange accent to echo the Cloudflare brand without requiring any
+   external imagery. */
+.epay-techdata__notice--cloudflare {
+	background: #eaf2fb;
+	border-left-color: #f38020;
+	color: #0a3c66;
+}
+
+.epay-techdata__notice--cloudflare p,
+.epay-techdata__notice--cloudflare ul {
+	margin: 0 0 8px;
+}
+
+.epay-techdata__notice--cloudflare p:last-child,
+.epay-techdata__notice--cloudflare ul:last-child {
+	margin-bottom: 0;
+}
+
+.epay-techdata__notice-heading {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #0a3c66;
+}
+
+/* When the Cloudflare notice is a collapsible <details>, the heading
+   element is a <summary>: hide the native disclosure marker, add a
+   pointer cursor, and append a chevron that flips when expanded. */
+summary.epay-techdata__notice-heading {
+	cursor: pointer;
+	list-style: none;
+	user-select: none;
+}
+
+summary.epay-techdata__notice-heading::-webkit-details-marker {
+	display: none;
+}
+
+summary.epay-techdata__notice-heading::after {
+	content: "\f140"; /* dashicons-arrow-down-alt2 */
+	font-family: dashicons;
+	font-size: 16px;
+	margin-left: auto;
+	color: #f38020;
+	transition: transform 0.15s ease;
+}
+
+details.epay-techdata__notice--cloudflare[open] > summary.epay-techdata__notice-heading::after {
+	transform: rotate(180deg);
+}
+
+details.epay-techdata__notice--cloudflare > *:not(summary) {
+	margin-top: 8px;
+}
+
+.epay-techdata__notice-heading .dashicons {
+	color: #f38020;
+	font-size: 18px;
+	width: 18px;
+	height: 18px;
+}
+
+.epay-techdata__notice--cloudflare a {
+	color: #0a3c66;
+	text-decoration: underline;
+}
+
+.epay-techdata__notice--cloudflare a:hover,
+.epay-techdata__notice--cloudflare a:focus {
+	color: #062646;
+}
+
+.epay-techdata__emails {
+	list-style: none;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.epay-techdata__emails li {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-family: Consolas, Monaco, "Courier New", monospace;
+	font-size: 12px;
+}
+
+.epay-techdata__emails .dashicons {
+	color: #f38020;
+	font-size: 16px;
+	width: 16px;
+	height: 16px;
+}
+
+/* Block-layout copy control: wraps a <textarea> + button stacked
+   vertically, used by the Cloudflare IPv4 list in the bank card. */
+.epay-copy--block {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 6px;
+}
+
+.epay-copy__textarea {
+	width: 100%;
+	min-height: 120px;
+	padding: 8px 10px;
+	background: #ffffff;
+	border: 1px solid var(--epay-border);
+	border-radius: 4px;
+	font-family: Consolas, Monaco, "Courier New", monospace;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--epay-text);
+	resize: vertical;
+	box-sizing: border-box;
+}
+
+.epay-copy__textarea:focus {
+	outline: 2px solid var(--epay-info);
+	outline-offset: 1px;
+	border-color: var(--epay-info);
+}
+
+.epay-copy--block .epay-copy__btn {
+	align-self: flex-start;
+}
+
+/* ------------------------------------------------------------------
+ * Resource / link list
+ * ------------------------------------------------------------------ */
+.epay-links {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.epay-links li + li {
+	border-top: 1px solid var(--epay-border);
+}
+
+.epay-links a {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 0;
+	color: var(--epay-text);
+	text-decoration: none;
+}
+
+.epay-links a:hover,
+.epay-links a:focus {
+	color: var(--epay-green);
+}
+
+.epay-links .dashicons {
+	font-size: 16px;
+	width: 16px;
+	height: 16px;
+	color: var(--epay-green);
+}
+
+/* ------------------------------------------------------------------
+ * Footnote / small print
+ * ------------------------------------------------------------------ */
+.epay-footnote {
+	margin: 0;
+	font-size: 11px;
+	line-height: 1.5;
+	color: var(--epay-text-soft);
+}
+
+.epay-footnote + .epay-footnote {
+	margin-top: 8px;
+}
+
+/* ------------------------------------------------------------------
+ * Minor spacing fixes for WC form-table within our cards
+ * ------------------------------------------------------------------ */
+.epay-admin .form-table input.regular-text,
+.epay-admin .form-table input[type="number"],
+.epay-admin .form-table input[type="password"],
+.epay-admin .form-table input[type="text"],
+.epay-admin .form-table select,
+.epay-admin .form-table textarea {
+	max-width: 100%;
+}
+
+.epay-admin .form-table th {
+	width: 220px;
+}
+
+/* Visually hide a node but keep it accessible to screen readers. */
+.epay-admin .screen-reader-text {
+	border: 0;
+	clip: rect(1px, 1px, 1px, 1px);
+	clip-path: inset(50%);
+	height: 1px;
+	width: 1px;
+	margin: -1px;
+	overflow: hidden;
+	padding: 0;
+	position: absolute;
+}
+
+/* ------------------------------------------------------------------
+ * Callback diagnostics / WAF self-test card
+ * ------------------------------------------------------------------ */
+.epay-admin .epay-waftest__controls {
+	margin: 12px 0 6px;
+}
+
+.epay-admin .epay-waftest__controls .button .dashicons {
+	vertical-align: text-bottom;
+	margin-right: 4px;
+}
+
+.epay-admin .epay-waftest__controls .button.is-busy .dashicons-update {
+	animation: epay-spin 1s linear infinite;
+}
+
+@keyframes epay-spin {
+	from { transform: rotate(0deg); }
+	to   { transform: rotate(360deg); }
+}
+
+.epay-admin .epay-waftest__result {
+	margin-top: 12px;
+	padding: 0;
+	font-size: 12px;
+}
+
+.epay-admin .epay-waftest__result:empty {
+	display: none;
+}
+
+.epay-admin .epay-waftest__result--pending,
+.epay-admin .epay-waftest__result--pass,
+.epay-admin .epay-waftest__result--blocked,
+.epay-admin .epay-waftest__result--error {
+	padding: 12px 14px;
+	border-radius: 6px;
+	border: 1px solid var(--epay-border);
+	background: var(--epay-bg-soft);
+}
+
+.epay-admin .epay-waftest__result--pass {
+	border-color: color-mix(in srgb, var(--epay-success) 40%, var(--epay-border));
+	background: color-mix(in srgb, var(--epay-success) 8%, var(--epay-bg));
+}
+
+.epay-admin .epay-waftest__result--blocked {
+	border-color: color-mix(in srgb, var(--epay-danger) 45%, var(--epay-border));
+	background: color-mix(in srgb, var(--epay-danger) 8%, var(--epay-bg));
+}
+
+.epay-admin .epay-waftest__result--error {
+	border-color: color-mix(in srgb, var(--epay-warning) 50%, var(--epay-border));
+	background: color-mix(in srgb, var(--epay-warning) 10%, var(--epay-bg));
+}
+
+.epay-admin .epay-waftest__headline {
+	margin: 0 0 10px;
+	font-weight: 600;
+	font-size: 13px;
+	color: var(--epay-text);
+}
+
+.epay-admin .epay-waftest__result--pass .epay-waftest__headline {
+	color: var(--epay-success);
+}
+
+.epay-admin .epay-waftest__result--blocked .epay-waftest__headline {
+	color: var(--epay-danger);
+}
+
+.epay-admin .epay-waftest__result--error .epay-waftest__headline {
+	color: #7a5a00;
+}
+
+.epay-admin .epay-waftest__row {
+	margin: 8px 0 0;
+}
+
+.epay-admin .epay-waftest__row strong {
+	display: block;
+	font-weight: 600;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+	color: var(--epay-text-soft);
+	margin-bottom: 4px;
+}
+
+.epay-admin .epay-waftest__code {
+	margin: 0;
+	padding: 8px 10px;
+	background: #fff;
+	border: 1px solid var(--epay-border);
+	border-radius: 4px;
+	font-family: Consolas, Monaco, "Courier New", monospace;
+	font-size: 11px;
+	line-height: 1.5;
+	color: var(--epay-text);
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: 200px;
+	overflow: auto;
+}

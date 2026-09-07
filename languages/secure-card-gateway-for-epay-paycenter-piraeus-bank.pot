@@ -1,0 +1,778 @@
+# Copyright (C) 2026 WebHosting4U
+# This file is distributed under the GPL-2.0-or-later License.
+msgid ""
+msgstr ""
+"Project-Id-Version: WebHosting4U Secure Card Gateway for ePay Paycenter (Piraeus Bank) 1.0.37\n"
+"Report-Msgid-Bugs-To: support@webhosting4u.gr\n"
+"POT-Creation-Date: 2026-08-29 06:58+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: scripts/make_pot.php\n"
+"X-Domain: secure-card-gateway-for-epay-paycenter-piraeus-bank\n"
+
+#: includes/class-epay-paycenter-blocks.php:109
+#: includes/class-epay-paycenter-gateway.php:259
+msgid "Credit / Debit Card (Piraeus Bank)"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:112
+msgid "ePay Paycenter (Piraeus Bank)"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:113
+msgid "Accept credit / debit card payments through the ePay Paycenter Redirection service (Piraeus Bank / Euronet Merchant Services). Customers are redirected to a secure payment page hosted by the bank."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:176
+msgid "Accepted card brands"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:222
+msgid "Installments (interest-free)"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:226
+msgid "One-time payment"
+msgstr ""
+
+#. translators: %d: number of monthly installments selected by the customer.
+#: includes/class-epay-paycenter-gateway.php:230
+msgid "%d installment"
+msgid_plural "%d installments"
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-epay-paycenter-gateway.php:250
+msgid "Enable / Disable"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:252
+msgid "Enable ePay Paycenter payments"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:256
+msgid "Title"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:258
+msgid "Payment method title shown at checkout."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:263
+msgid "Description"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:265
+msgid "Description shown at checkout."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:266
+msgid "Pay securely with your credit or debit card. You will be redirected to the Piraeus Bank secure payment page to complete your order."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:269
+msgid "Environment"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:271
+msgid "Use the test environment when validating test transactions. Credentials for test and live accounts are different and provided by Euronet Merchant Services."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:274
+#: includes/class-epay-paycenter-gateway.php:426
+msgid "Test account"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:275
+#: includes/class-epay-paycenter-gateway.php:426
+msgid "Live account"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:280
+msgid "Acquirer ID"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:282
+msgid "Numeric AcquirerId provided by Euronet Merchant Services."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:286
+msgid "Merchant ID"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:288
+msgid "Numeric MerchantId provided by Euronet Merchant Services."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:292
+msgid "POS ID"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:294
+msgid "Numeric PosId provided by Euronet Merchant Services."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:298
+msgid "Username"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:300
+msgid "Username for the Ticketing Web Service (max. 50 characters)."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:304
+msgid "Password"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:306
+msgid "Password for the Ticketing Web Service, as issued by Euronet Merchant Services. Only its MD5 digest is stored — the specification requires the digest to be what is transmitted, so the plain password is never written to the database. The field therefore always displays empty: leave it blank to keep the current credential, or type a new password to replace it."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:308
+msgid "Leave blank to keep the saved password"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:311
+msgid "Payment page language"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:315
+msgid "Greek"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:316
+msgid "English"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:317
+msgid "Russian"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:318
+msgid "German"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:322
+msgid "Installments support"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:324
+msgid "Offer installments when allowed by the merchant agreement."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:326
+msgid "Requires activation by Euronet Merchant Services. Installments are not supported for IRIS payments."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:329
+msgid "Maximum installments"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:336
+msgid "Maximum number of installments offered to the customer. Use 0 or 1 to disable."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:339
+msgid "Minimum order total for installments"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:346
+msgid "Orders below this amount will not offer installments."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:349
+msgid "Tiered max installments by amount (interest-free)"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:353
+msgid "Optional tiered configuration. Format: \"amount:max,amount:max,...\". Example: \"50:3, 100:6, 200:12\" means orders >= 50 offer up to 3 installments, >= 100 up to 6, >= 200 up to 12. Per Piraeus Bank policy these installments are always interest-free for the customer (the merchant absorbs the bank commission). When this field is filled, it overrides the flat Maximum installments value above. Empty = use the flat maximum."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:356
+msgid "Logging"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:358
+msgid "Enable debug logging to WooCommerce → Status → Logs (source: epay-paycenter). Credentials are never logged."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:395
+msgid "ePay Paycenter for WooCommerce"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:401
+msgid "Accept credit and debit card payments through the Piraeus Bank / Euronet Merchant Services secure Redirection service."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:465
+msgid "Integration resources"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:471
+msgid "Resources"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:479
+msgid "WooCommerce → Status → Logs"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:485
+msgid "Orders paid via Paycenter"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:491
+msgid "Installed plugins"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:502
+msgid "About this plugin"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:507
+msgid "Implements the official ePay Paycenter Redirection v2.9 specification: SOAP ticketing, HMAC-SHA256 response verification, HPOS and Checkout Blocks support."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:510
+msgid "Published under GPL-2.0-or-later by WebHosting4U. \"ePay\", \"Paycenter\" and the Piraeus Bank payment mark are trademarks of Piraeus Bank S.A. / Euronet Merchant Services."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:533
+msgid "General"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:538
+msgid "Merchant credentials"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:540
+msgid "Credentials are provided by Euronet Merchant Services. Test and live accounts use separate credential sets."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:544
+msgid "Payment behaviour"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:549
+msgid "Installments"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:551
+msgid "Activation by Euronet Merchant Services is required. Installments are interest-free for the customer (the merchant absorbs the bank commission). Installments are not available for IRIS payments."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:555
+msgid "Advanced & logging"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:615
+msgid "Website URL"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:617
+msgid "Your site origin. This is the URL from which test or live transactions are initiated."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:620
+msgid "Referrer URL"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:622
+msgid "Page that initiates the payment. Paycenter receives the POST from the auto-submit form rendered on the order pay page that follows checkout."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:625
+msgid "Success URL"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:627
+msgid "Paycenter posts the successful transaction response to this URL. The plugin verifies it via HMAC-SHA256 HashKey before marking the order paid."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:630
+msgid "Failure URL"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:632
+msgid "Paycenter posts a failed-transaction response to this URL. The plugin handler uses ResultCode / StatusFlag to flag the order as failed."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:635
+msgid "Backlink URL"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:637
+msgid "URL the customer is sent to when pressing \"Cancel\" on the Paycenter page. The plugin appends a per-order token automatically via the ParamBackLink field at ticket creation."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:672
+msgid "Outbound IP (the value ePay needs)"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:673
+msgid "Not detected automatically"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:674
+msgid "The address this server uses when it calls the Paycenter ticketing service, and the one to register with Euronet Merchant Services. WordPress cannot read it, because only a request to an outside host reveals it. To find it, run  curl -4 https://api.ipify.org  on the server over SSH, or ask your hosting provider for the outbound (egress) IP. Hosts and developers can publish it here with the epay_paycenter_outbound_ip filter."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:677
+msgid "Website IP (not the value for ePay)"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:678
+msgid "Not detected"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:679
+msgid "The address this site is served on, as reported by WordPress. Behind a reverse proxy, load balancer, NAT or on a server with more than one IP, this is not the address that reaches Paycenter. Do not give this value to the bank unless your hosting provider has confirmed that the incoming and outgoing addresses are the same."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:682
+msgid "Response method"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:683
+msgid "POST (recommended). GET is also accepted."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:684
+msgid "Method Paycenter uses to deliver the transaction response to the Success / Failure URLs. The plugin handler accepts both; POST is the recommended choice on the merchant form."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1088
+msgid "Order could not be loaded."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1108
+msgid "Awaiting Paycenter payment."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1127
+msgid "Order not found."
+msgstr ""
+
+#. translators: %s currency code
+#: includes/class-epay-paycenter-gateway.php:1428
+msgid "Currency %s is not supported by Paycenter."
+msgstr ""
+
+#. translators: 1: result code, 2: description
+#: includes/class-epay-paycenter-gateway.php:1734
+msgid "Paycenter ticketing failed. Result code: %1$s. Description: %2$s."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1743
+msgid "We could not start a secure card payment at the moment. Please try again later or choose a different payment method."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1747
+msgid "Return to checkout"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1789
+msgid "You do not have permission to run this diagnostic."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1846
+msgid "The self-test POST could not be issued from this server. This usually means the WordPress host cannot reach its own public URL (DNS / loopback / TLS issue). Paycenter callbacks from the bank are a separate ingress path and may still work, but this self-test cannot validate them without loopback connectivity."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1939
+msgid "Bank integration data"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1942
+msgid "Values to submit to Euronet Merchant Services"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1949
+msgid "Copy the following values into the technical data form provided by Euronet Merchant Services / Piraeus Bank when requesting test or live credentials. Values are generated from this WordPress installation and will change if the site URL moves."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1975
+msgid "Copy callback URLs to clipboard"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1977
+#: includes/class-epay-paycenter-gateway.php:2005
+#: includes/class-epay-paycenter-plugin.php:437
+msgid "Copy"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2003
+msgid "Copy IP address to clipboard"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2045
+msgid "Cloudflare detected on this site"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2048
+msgid "This store appears to be served through Cloudflare (a CF-Ray / CF-Connecting-IP header was detected on the current request). Requests from Paycenter to your Success / Failure / Backlink URLs therefore reach your site through Cloudflare edge IPs, not only from the web server address shown above. To avoid blocked callbacks, ask Euronet Merchant Services to whitelist the full Cloudflare IPv4 range in addition to your webserver IP."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2051
+msgid "Contact the following addresses and request that the Cloudflare IPv4 ranges be added to your merchant record:"
+msgstr ""
+
+#. translators: %s: link to Cloudflare's official IPv4 list.
+#: includes/class-epay-paycenter-gateway.php:2068
+msgid "The authoritative Cloudflare IPv4 list is always published at %s and is updated by Cloudflare when their edge network changes."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2081
+msgid "Current Cloudflare IPv4 ranges (%d CIDR)"
+msgid_plural "Current Cloudflare IPv4 ranges (%d CIDRs)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-epay-paycenter-gateway.php:2088
+msgid "Copy Cloudflare IPv4 ranges to clipboard"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2090
+msgid "Copy all ranges"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2094
+msgid "Fetched from Cloudflare and cached for 12 hours. Copy these CIDRs into the email alongside your webserver IP."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2098
+msgid "The live Cloudflare IPv4 list could not be fetched from this server right now. Please copy it manually from the link above."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2123
+msgid "Callback diagnostics"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2126
+msgid "Detect host-WAF interception before going live"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2131
+msgid "Some shared-hosting firewalls (cPFence, ModSecurity / OWASP CRS, Imunify360, BitNinja, LiteSpeed WAF) can intercept the Paycenter failure callbacks because their payloads contain patterns (dash-only TransactionDateTime, Greek error text, empty HashKey on declined transactions) that look like attack signatures. The test below issues a realistic declined-transaction POST from this WordPress server to the plugin's own callback URL and reports whether it is blocked before it reaches PHP. No order is created or modified; the synthetic payload carries a WAFTEST- merchant reference that no order in the database can match."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2134
+msgid "Scope: this exercises your local webserver / host WAF (ModSecurity, cPFence, Imunify360, BitNinja, LiteSpeed). CDN-level WAFs that sit in front of your origin (Cloudflare, Sucuri, Akamai) are not exercised by the loopback POST; their rules must be tested with an external probe."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:2139
+msgid "Test callback URL"
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:451
+msgid "Paycenter reported success but no TranTicket was stored for verification. Manual review required."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:469
+msgid "Payment reported successful by Paycenter but HashKey verification failed. Manual review required before fulfilling the order."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:473
+msgid "Payment could not be verified. Our team has been notified. Please contact support before retrying the payment."
+msgstr ""
+
+#. translators: 1: approval code, 2: support reference id.
+#: includes/class-epay-paycenter-handler.php:495
+msgid "Paycenter IRIS payment approved. Approval code: %1$s, Support Reference ID: %2$s."
+msgstr ""
+
+#. translators: 1: approval code, 2: package no, 3: support reference
+#: includes/class-epay-paycenter-handler.php:502
+msgid "Paycenter card payment approved. Approval code: %1$s, Package: %2$s, Support Reference ID: %3$s."
+msgstr ""
+
+#. translators: %s: Google Pay PAN type - FPAN (real card number) or DPAN (device token).
+#: includes/class-epay-paycenter-handler.php:518
+msgid "Paid via Google Pay (%s)."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:666
+msgid "Paycenter §7 Test Case 3: Recharge attempt on an already-paid order (ResultCode 1048). Order status unchanged."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:667
+msgid "Paycenter: non-success callback received for an already-paid order. Order status unchanged."
+msgstr ""
+
+#. translators: 1: scenario label, 2: merchant reference, 3: result code, 4: result description, 5: response code, 6: support reference id.
+#: includes/class-epay-paycenter-handler.php:672
+#: includes/class-epay-paycenter-handler.php:989
+msgid "%1$s MerchantReference: %2$s, ResultCode: %3$s, ResultDescription: %4$s, ResponseCode: %5$s, SupportReferenceID: %6$s."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:690
+msgid "This order has already been paid. Your new payment attempt was not processed and no additional charge was made."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:754
+msgid "Customer cancelled the Paycenter payment."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:763
+msgid "Payment was cancelled. Your cart is preserved if you wish to try again."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1030
+msgid "Paycenter §5: Communication problem with the transaction processing system."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1031
+msgid "A temporary technical issue prevented the payment. Please try again in a few minutes."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1040
+msgid "Paycenter §5: Incorrect card details or unsupported card."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1041
+msgid "We could not validate your card details. Please check the card number, expiry date, and CVV, or try a different card."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1052
+msgid "Paycenter §5: Stalled transaction - please verify the transaction status in the epay eCommerce AdminTool before retrying."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1053
+msgid "A previous payment attempt for this order is still being processed. Please wait a few seconds and try again."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1065
+msgid "Paycenter §5: Recharge attempt (MerchantReference reused)."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1066
+msgid "The payment could not be processed because this payment reference has already been used. Please refresh the page and start a new payment. If you have already paid for this order, please contact us before paying again."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1073
+msgid "Paycenter §5: Batch closing."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1074
+msgid "The payment provider is finalising today's transactions. Please try again in a few minutes."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1081
+msgid "Paycenter §5: Temporary technical problem."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1082
+msgid "A temporary issue prevented the payment. Please try again in a few minutes."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1091
+msgid "Paycenter §9: Anti-fraud review - detail withheld from customer by spec."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1092
+msgid "Payment could not be authorised. Please try a different payment method."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1103
+msgid "Paycenter §5: Unclassified failure."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1104
+msgid "Payment could not be completed. Please try again or use a different payment method."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1145
+msgid "Paycenter §5: IRIS payment initiated but not completed (ResponseCode 09). Order placed ON HOLD, not failed - it may still settle. Reconcile against the bank before cancelling or refunding."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1147
+msgid "Paycenter §5: IRIS payment decline."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1149
+msgid "Paycenter §5: Issuer decline."
+msgstr ""
+
+#. translators: 1: scenario label, 2: merchant reference, 3: response code, 4: response description, 5: support reference id.
+#: includes/class-epay-paycenter-handler.php:1158
+msgid "%1$s MerchantReference: %2$s, ResponseCode: %3$s, ResponseDescription: %4$s, SupportReferenceID: %5$s."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1177
+msgid "You cancelled the payment from your bank app. No charge was made. You can try again or choose a different payment method."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1180
+msgid "The IRIS payment could not be completed due to a technical issue. Please try again later or choose a different payment method."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1190
+msgid "Your IRIS payment has been started but not yet confirmed. Your order is on hold and will update automatically once your bank confirms the transfer. Please do not pay again, or you may be charged twice. Contact us if you do not hear back."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1195
+msgid "The IRIS payment timed out. The QR code expires after 5 minutes. Please try again."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1198
+msgid "An unexpected error occurred with the IRIS service. Please try again later or choose a different payment method."
+msgstr ""
+
+#. translators: %s: decline reason as returned by the bank for an IRIS payment, verbatim.
+#: includes/class-epay-paycenter-handler.php:1207
+msgid "Your IRIS payment was not completed. Reason: %s. Please try again or choose a different payment method."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1211
+msgid "Your IRIS payment was not completed. Please try again or choose a different payment method."
+msgstr ""
+
+#. translators: %s: decline reason as returned by the card issuer, verbatim.
+#: includes/class-epay-paycenter-handler.php:1226
+msgid "Your card was declined by the issuer. Reason: %s. Please try a different card or contact your bank."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1233
+msgid "The card network is temporarily unavailable. Please try again in a few minutes."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1236
+msgid "The payment timed out. Please try again."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1239
+msgid "This card is not eligible for this type of payment. Please use a different card."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php:1242
+msgid "Your card was declined. Please try a different card or contact your bank."
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:438
+msgid "Copied"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:439
+msgid "Press Ctrl+C to copy"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:440
+msgid "Testing callback URL…"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:441
+msgid "Callback URL reachable. No host WAF interception detected."
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:442
+msgid "Callback URL blocked by a host WAF / firewall. Real Paycenter callbacks will fail until this URL is whitelisted."
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:443
+msgid "Callback URL returned a server error. Inspect the WooCommerce → Status → Logs panel and your webserver error log."
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:444
+msgid "No response received from the callback URL. Check DNS / loopback connectivity from this host."
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:445
+msgid "The self-test could not reach the callback URL from this server."
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:446
+msgid "HTTP status:"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:447
+msgid "Response headers (filtered):"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:448
+msgid "Response body snippet:"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:449
+msgid "Target URL:"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:450
+msgid "Network error. The browser could not reach admin-ajax.php."
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:544
+msgid "Settings"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:697
+msgid "ePay Paycenter: card payments are failing"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:699
+msgid "The bank rejected this store's Ticketing Web Service credentials (ResultCode 100, Authentication Error). No payment can be started while this lasts: every customer choosing this payment method will see a failure. Check the Username and Password on the gateway settings screen against the values issued by Euronet Merchant Services, and remember that the environment (Test / Live) has its own separate credentials."
+msgstr ""
+
+#. translators: 1: date and time the failures began, in UTC. 2: description returned by the bank.
+#: includes/class-epay-paycenter-plugin.php:707
+msgid "First seen: %1$s UTC. Bank response: %2$s"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:714
+msgid "Check the gateway credentials"
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:717
+msgid "This notice disappears on its own as soon as a payment is successfully started, so there is nothing to dismiss once the credentials are corrected."
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:729
+msgid "ePay Paycenter for WooCommerce requires WooCommerce to be installed and active."
+msgstr ""
+
+#. translators: 1: number of hours the payment attempt has been open, 2: MerchantReference of the attempt.
+#: includes/class-epay-paycenter-reconciliation.php:218
+msgid "Paycenter reconciliation: a payment was started for this order more than %1$d hours ago and no final response was ever received. The order status has deliberately NOT been changed, because without the bank's follow-up Web Service the plugin cannot tell an abandoned checkout from a completed payment whose callback was lost. Check MerchantReference %2$s in the epay eCommerce AdminTool: if the transaction settled, mark this order paid; if not, it can be cancelled."
+msgstr ""
+
+#: includes/class-epay-paycenter-reconciliation.php:370
+msgid "ePay Paycenter: payments started but never confirmed"
+msgstr ""
+
+#. translators: %d: number of orders with an unconfirmed payment attempt.
+#: includes/class-epay-paycenter-reconciliation.php:375
+msgid "%d order has a Paycenter payment that was started but for which no final response was ever received. The order status has not been changed automatically, because the plugin cannot tell an abandoned checkout from a completed payment whose callback was lost."
+msgid_plural "%d orders have a Paycenter payment that was started but for which no final response was ever received. Their statuses have not been changed automatically, because the plugin cannot tell an abandoned checkout from a completed payment whose callback was lost."
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-epay-paycenter-reconciliation.php:385
+msgid "Check each one in the epay eCommerce AdminTool. If the transaction settled, mark the order paid; if it did not, the order can be cancelled. Each affected order carries a note with its MerchantReference."
+msgstr ""
+
+#. translators: %d: number of additional affected orders not listed individually.
+#: includes/class-epay-paycenter-reconciliation.php:404
+msgid "and %d more."
+msgstr ""
+
+#: includes/class-epay-paycenter-reconciliation.php:413
+msgid "Hide this for a week"
+msgstr ""
+
+#: templates/redirect-form.php:20
+msgid "Redirecting you to the Piraeus Bank secure payment page to complete your order. Please do not close or reload this page."
+msgstr ""
+
+#: templates/redirect-form.php:28
+msgid "JavaScript is required to complete the payment automatically. Click the button below to continue to the secure payment page."
+msgstr ""
+
+#: templates/redirect-form.php:30
+msgid "Continue to secure payment"
+msgstr ""
+
+#: templates/redirect-form.php:37
+msgid "Cancel and return to checkout"
+msgstr ""

@@ -1,0 +1,50 @@
+.epay-paycenter-redirect {
+	max-width: 560px;
+	margin: 1.5em auto;
+	padding: 1.5em;
+	border: 1px solid #e5e5e5;
+	background: #f9f9f9;
+	text-align: center;
+}
+
+.epay-paycenter-redirect__message {
+	font-size: 1.05em;
+	margin-bottom: 1em;
+}
+
+.epay-paycenter-redirect__cancel {
+	margin-top: 1.5em;
+	font-size: 0.9em;
+}
+
+/* --- Checkout: accepted card-brands image (classic + blocks) --- */
+.epay-paycenter-icon {
+	display: block;
+	margin: 0.75em 0;
+	line-height: 0;
+}
+
+.epay-paycenter-icon__img {
+	display: block;
+	width: auto;
+	max-width: 100%;
+	height: auto;
+}
+
+@media (min-width: 601px) {
+	.epay-paycenter-icon__img {
+		max-width: 400px;
+	}
+}
+
+@media (max-width: 600px) {
+	.epay-paycenter-icon__img {
+		max-width: 280px;
+	}
+}
+
+@media (max-width: 400px) {
+	.epay-paycenter-icon__img {
+		max-width: 220px;
+	}
+}
