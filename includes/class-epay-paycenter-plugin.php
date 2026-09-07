@@ -297,6 +297,7 @@ final class Epay_Paycenter_Plugin {
 			'class-epay-paycenter-credentials.php',
 			'class-epay-paycenter-credential-notice.php',
 			'class-epay-paycenter-order-notices.php',
+			'class-epay-paycenter-review.php',
 			'class-epay-paycenter-open-tickets.php',
 			'class-epay-paycenter-logger.php',
 			'class-epay-paycenter-ticket-audit.php',

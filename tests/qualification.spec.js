@@ -1319,6 +1319,53 @@ test('@followup reports a paid permanently deleted order without recreating it',
   expect(checked.ticket_statuses).toEqual({ [attempt.MerchantReference]: 'succeeded' });
 });
 
+test('@review staff see actionable cases only on order screens and can acknowledge without changing payment data', async ({ page, request }) => {
+  const historical = await createOrder(request);
+  const oldAttempt = await issueAttempt(request, historical);
+  await verifyAndEnableFollowUp(request, historical);
+  await setFixture(request, `follow-up/age-attempt/${historical.order_id}`, {});
+  await setFixture(request, 'fake-follow-up', { scenario: 'not_found', channel: 'eCommerce' });
+  await setFixture(request, `follow-up/run/${historical.order_id}`, {});
+  const missing = await createOrder(request);
+  const paidAttempt = await issueAttempt(request, missing);
+  await setFixture(request, `delete-order/${missing.order_id}`, {});
+  await setFixture(request, 'fake-follow-up', { scenario: 'paid', channel: 'eCommerce' });
+  await setFixture(request, `follow-up/run/${missing.order_id}`, {});
+  await loginAsLocalAdmin(page);
+  await page.goto('/wp-admin/');
+  await expect(page.getByText(paidAttempt.MerchantReference, { exact: false })).toHaveCount(0);
+  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  const review = page.locator('.epay-paycenter-review');
+  const paidRow = review.locator('li').filter({ hasText: paidAttempt.MerchantReference });
+  await expect(paidRow).toContainText('Bank confirmed payment, but the order is missing');
+  const reviewKey = await paidRow.locator('[name="review_key"]').inputValue();
+  const nonce = await paidRow.locator('[name="_wpnonce"]').inputValue();
+  const unprivileged = await request.post('/wp-admin/admin-post.php', {
+    form: { action: 'epay_paycenter_review', review_key: reviewKey, _wpnonce: nonce }, maxRedirects: 0,
+  });
+  expect(unprivileged.ok()).toBe(false);
+  const forged = await page.request.post('/wp-admin/admin-post.php', {
+    form: { action: 'epay_paycenter_review', review_key: reviewKey, _wpnonce: 'invalid' }, maxRedirects: 0,
+  });
+  expect(forged.status()).toBe(403);
+  const historicalRow = review.locator('li').filter({ hasText: oldAttempt.MerchantReference });
+  await expect(historicalRow).not.toBeVisible();
+  if (process.env.EPAY_TEST_CAPTURE_UI) await page.screenshot({ path: test.info().outputPath('staff-review.png'), fullPage: true });
+  await review.getByText('Historical checks', { exact: false }).click();
+  await expect(historicalRow).toBeVisible();
+  await paidRow.getByRole('button', { name: 'Mark reviewed', exact: true }).click();
+  await expect(review.getByText(paidAttempt.MerchantReference, { exact: false })).toHaveCount(0);
+  await page.reload();
+  await expect(review.getByText(paidAttempt.MerchantReference, { exact: false })).toHaveCount(0);
+  expect((await readOrder(request, historical.order_id)).epay.follow_up[oldAttempt.MerchantReference].state).toBe('unresolved');
+  const missingState = await setFixture(request, `follow-up/run/${missing.order_id}`, {});
+  expect(missingState.order).toBeNull();
+  expect(missingState.ticket_statuses).toEqual({ [paidAttempt.MerchantReference]: 'succeeded' });
+  await page.goto('/wp-admin/admin.php?page=wc-settings&tab=checkout&section=epay_paycenter');
+  await review.getByText('Reviewed cases', { exact: false }).click();
+  await expect(review.locator('li').filter({ hasText: paidAttempt.MerchantReference })).toContainText('Reviewed (UTC)');
+});
+
 test('@matrix payment handoff renders with supported shipping methods', async ({ page, request }) => {
   for (const shippingMethod of ['local_pickup', 'flat_rate']) {
     const order = await createOrder(request, { shippingMethod });

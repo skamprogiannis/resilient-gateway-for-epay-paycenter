@@ -47,8 +47,7 @@ final class Epay_Paycenter_Reconciliation {
 			}
 		);
 		add_action( self::STOCK_RELEASE_HOOK, array( __CLASS__, 'release_stock' ) );
-		add_action( 'admin_notices', array( __CLASS__, 'admin_notice' ) );
-		add_action( 'admin_init', array( __CLASS__, 'maybe_handle_dismiss' ) );
+		Epay_Paycenter_Review::init();
 		add_action( 'wp_ajax_epay_paycenter_follow_up_test', array( __CLASS__, 'ajax_test_channel' ) );
 		add_action(
 			'woocommerce_update_options_payment_gateways_' . EPAY_PAYCENTER_GATEWAY_ID,
@@ -462,7 +461,7 @@ final class Epay_Paycenter_Reconciliation {
 					if ( 'paid' === $state ) {
 						++$paid;
 						++$summary['paid'];
-						self::record_alert(
+						Epay_Paycenter_Review::record(
 							$order && 'trash' === $order->get_status() ? 'trash_paid' : 'missing_paid',
 							$order_id,
 							(string) $row['merchant_reference']
@@ -477,7 +476,7 @@ final class Epay_Paycenter_Reconciliation {
 				}
 				if ( $paid > 1 || self::paid_attempt_count( $order_id ) > 1 ) {
 					$summary['double_payments'] = 1;
-					self::record_alert( 'double_paid', $order_id );
+					Epay_Paycenter_Review::record( 'double_paid', $order_id );
 				}
 				$summary['unresolved'] = self::unresolved_count( $order_id );
 				return $summary;
@@ -529,7 +528,7 @@ final class Epay_Paycenter_Reconciliation {
 						$stored_paid_results[] = $paid_result;
 					} else {
 						++$summary['settlement_errors'];
-						self::record_alert( 'database_error', $order_id, $paid_result['reference'] );
+						Epay_Paycenter_Review::record( 'database_error', $order_id, $paid_result['reference'] );
 					}
 				}
 				$paid_results = $stored_paid_results;
@@ -539,7 +538,7 @@ final class Epay_Paycenter_Reconciliation {
 				}
 				if ( count( $paid_results ) > 1 || self::paid_attempt_count( $order_id ) > 1 ) {
 					$summary['double_payments'] = 1;
-					self::record_alert( 'double_paid', $order_id );
+					Epay_Paycenter_Review::record( 'double_paid', $order_id );
 				}
 
 				// Keep the first verified settlement canonical. A subsequent paid
@@ -553,7 +552,7 @@ final class Epay_Paycenter_Reconciliation {
 					$settled = self::settle_order( $order, $paid_results[0]['reference'], $paid_results[0]['result'] );
 					if ( ! $settled ) {
 						foreach ( $paid_results as $paid_result ) {
-							self::record_alert( 'settlement_error', $order_id, $paid_result['reference'] );
+							Epay_Paycenter_Review::record( 'settlement_error', $order_id, $paid_result['reference'] );
 						}
 						$summary['settlement_errors'] = count( $paid_results );
 						$summary['unresolved']        = self::unresolved_count( $order_id );
@@ -580,7 +579,7 @@ final class Epay_Paycenter_Reconciliation {
 			return $summary;
 		} catch ( Throwable $error ) {
 			++$summary['query_errors'];
-			self::record_alert( 'reconciliation_error', $order_id );
+			Epay_Paycenter_Review::record( 'reconciliation_error', $order_id );
 			Epay_Paycenter_Logger::error(
 				'Unexpected failure while reconciling an ePay order; the attempt remains queued for review.',
 				array( 'order_id' => $order_id )
@@ -659,7 +658,7 @@ final class Epay_Paycenter_Reconciliation {
 			throw new RuntimeException( 'Could not persist an ePay follow-up result.' );
 		}
 		if ( 'unresolved' === $state ) {
-			self::record_alert( 'unresolved', (int) $row['order_id'], (string) $row['merchant_reference'] );
+			Epay_Paycenter_Review::record( 'unresolved', (int) $row['order_id'], (string) $row['merchant_reference'], 1 === $attempts && $now - $created >= 2 * DAY_IN_SECONDS );
 		}
 	}
 
@@ -787,7 +786,7 @@ final class Epay_Paycenter_Reconciliation {
 		$already_paid = $order->is_paid();
 		$late         = $order->has_status( array( 'cancelled', 'failed' ) );
 		if ( 'trash' === $order->get_status() ) {
-			self::record_alert( 'trash_paid', $order->get_id() );
+			Epay_Paycenter_Review::record( 'trash_paid', $order->get_id() );
 			return false;
 		}
 
@@ -834,7 +833,7 @@ final class Epay_Paycenter_Reconciliation {
 			);
 			if ( $late ) {
 				$order->add_order_note( __( 'Attention: this payment was recovered after the order had been cancelled or failed. Verify stock and fulfilment before dispatch.', 'resilient-gateway-for-epay-paycenter' ) );
-				self::record_alert( 'late_paid', $order->get_id(), $reference );
+				Epay_Paycenter_Review::record( 'late_paid', $order->get_id(), $reference );
 			}
 			$order->save();
 			return true;
@@ -899,7 +898,7 @@ final class Epay_Paycenter_Reconciliation {
 			)
 		);
 		$order->save();
-		self::record_alert( 'double_paid', $order->get_id() );
+		Epay_Paycenter_Review::record( 'double_paid', $order->get_id() );
 	}
 
 	/**
@@ -1217,81 +1216,6 @@ final class Epay_Paycenter_Reconciliation {
 		}
 		$timestamp = strtotime( $value );
 		return false === $timestamp ? null : gmdate( 'Y-m-d H:i:s', $timestamp );
-	}
-
-	/**
-	 * Store a concise human-review alert.
-	 *
-	 * @param string $type Alert category.
-	 * @param int    $order_id Order ID.
-	 * @param string $reference Issued reference, when the alert concerns one attempt.
-	 */
-	private static function record_alert( string $type, int $order_id, string $reference = '' ): void {
-		$report    = get_option( self::REPORT_OPTION );
-		$report    = is_array( $report ) ? $report : array();
-		$items     = isset( $report['items'] ) && is_array( $report['items'] ) ? $report['items'] : array();
-		$reference = substr( sanitize_text_field( (string) $reference ), 0, 50 );
-		$key       = sanitize_key( $type ) . ':' . absint( $order_id );
-		if ( '' !== $reference ) {
-			$key .= ':' . substr( hash( 'sha256', $reference ), 0, 12 );
-		}
-		$items[ $key ] = array(
-			'type'      => sanitize_key( $type ),
-			'order_id'  => absint( $order_id ),
-			'reference' => $reference,
-		);
-		update_option(
-			self::REPORT_OPTION,
-			array(
-				'time'  => current_time( 'mysql', true ),
-				'items' => array_slice( $items, -50, null, true ),
-			),
-			false
-		);
-		delete_transient( self::DISMISS_TRANSIENT );
-	}
-
-	/** Handle the one-week alert dismissal. */
-	public static function maybe_handle_dismiss(): void {
-		if ( ! isset( $_GET['epay_paycenter_dismiss_reconcile'] ) || ! current_user_can( 'manage_woocommerce' ) ) {
-			return;
-		}
-		check_admin_referer( 'epay_paycenter_dismiss_reconcile' );
-		set_transient( self::DISMISS_TRANSIENT, 1, WEEK_IN_SECONDS );
-		wp_safe_redirect( remove_query_arg( array( 'epay_paycenter_dismiss_reconcile', '_wpnonce' ) ) );
-		exit;
-	}
-
-	/** Render alerts only for results requiring human review. */
-	public static function admin_notice(): void {
-		if ( ! current_user_can( 'manage_woocommerce' ) || get_transient( self::DISMISS_TRANSIENT ) ) {
-			return;
-		}
-		$report = get_option( self::REPORT_OPTION );
-		$items  = is_array( $report ) && isset( $report['items'] ) && is_array( $report['items'] ) ? $report['items'] : array();
-		if ( empty( $items ) ) {
-			return;
-		}
-
-		$links = array();
-		foreach ( array_slice( $items, -20 ) as $item ) {
-			$order_id = isset( $item['order_id'] ) ? absint( $item['order_id'] ) : 0;
-			if ( $order_id ) {
-				$reference = isset( $item['reference'] ) ? substr( sanitize_text_field( (string) $item['reference'] ), 0, 50 ) : '';
-				$label     = '#' . $order_id . ( '' !== $reference ? ' — ' . $reference : '' );
-				$order     = wc_get_order( $order_id );
-				if ( $order && method_exists( $order, 'get_edit_order_url' ) ) {
-					$links[] = '<a href="' . esc_url( $order->get_edit_order_url() ) . '">' . esc_html( $label ) . '</a>';
-				} else {
-					$links[] = esc_html( $label );
-				}
-			}
-		}
-		$dismiss = wp_nonce_url( add_query_arg( 'epay_paycenter_dismiss_reconcile', '1' ), 'epay_paycenter_dismiss_reconcile' );
-		echo '<div class="notice notice-error"><p><strong>' . esc_html__( 'ePay follow-up needs review', 'resilient-gateway-for-epay-paycenter' ) . '</strong></p>';
-		echo '<p>' . esc_html__( 'A late payment, detached paid record, local settlement error, possible duplicate payment, or unresolved bank check was detected. Review these references before fulfilment:', 'resilient-gateway-for-epay-paycenter' ) . ' ';
-		echo wp_kses( implode( ', ', $links ), array( 'a' => array( 'href' => array() ) ) );
-		echo '</p><p><a href="' . esc_url( $dismiss ) . '">' . esc_html__( 'Hide this for a week', 'resilient-gateway-for-epay-paycenter' ) . '</a></p></div>';
 	}
 
 	/**
