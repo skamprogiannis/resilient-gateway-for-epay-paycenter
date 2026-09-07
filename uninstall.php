@@ -16,6 +16,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 
 delete_option( 'woocommerce_epay_paycenter_settings' );
 delete_option( 'epay_paycenter_db_version' );
+delete_option( 'epay_paycenter_ambiguous_09_repaired' );
 
 // Reconciliation report read by the admin notice.
 delete_option( 'epay_paycenter_reconcile_report' );

@@ -145,21 +145,50 @@ final class Epay_Paycenter_Follow_Up {
 		);
 
 		if ( is_wp_error( $response ) ) {
-			Epay_Paycenter_Logger::error( 'Paycenter follow-up HTTP error', array( 'error' => $response->get_error_message() ) );
+			Epay_Paycenter_Logger::error(
+				'Paycenter follow-up HTTP error',
+				array(
+					'reference' => $merchant_reference,
+					'error'     => $response->get_error_message(),
+				)
+			);
 			return $this->error_result( $response->get_error_message() );
 		}
 
 		$http_code = (int) wp_remote_retrieve_response_code( $response );
 		$body      = (string) wp_remote_retrieve_body( $response );
 		if ( 200 !== $http_code ) {
-			Epay_Paycenter_Logger::error( 'Paycenter follow-up unexpected HTTP status', array( 'status' => $http_code ) );
+			Epay_Paycenter_Logger::error(
+				'Paycenter follow-up unexpected HTTP status',
+				array(
+					'reference' => $merchant_reference,
+					'status'    => $http_code,
+				)
+			);
 			return $this->error_result( 'Unexpected HTTP status ' . $http_code );
 		}
 		if ( '' === $body || strlen( $body ) > self::MAX_RESPONSE_SIZE ) {
+			Epay_Paycenter_Logger::error( 'Paycenter follow-up response was empty or too large', array( 'reference' => $merchant_reference ) );
 			return $this->error_result( 'The follow-up response was empty or too large.' );
 		}
 
-		return $this->parse_response( $body, $merchant_reference, $channel );
+		$result = $this->parse_response( $body, $merchant_reference, $channel );
+		Epay_Paycenter_Logger::info(
+			'Paycenter follow-up result',
+			array(
+				'reference'      => $merchant_reference,
+				'channel'        => $channel,
+				'state'          => $result['state'],
+				'result_code'    => $result['result_code'],
+				'status_flag'    => $result['status_flag'],
+				'response_code'  => $result['response_code'],
+				'transaction_id' => $result['transaction_id'],
+				'transaction_at' => $result['transaction_at'],
+				'payment_method' => $result['payment_method'],
+				'iris_status'    => $result['iris_status'],
+			)
+		);
+		return $result;
 	}
 
 	/**
@@ -287,7 +316,12 @@ final class Epay_Paycenter_Follow_Up {
 			return $result;
 		}
 
-		$result['state'] = 'Failure' === $status_flag ? 'declined' : 'pending';
+		// IRIS 09 can precede the final bank result even with a Failure flag.
+		// Missing method information must not turn that ambiguity into a decline.
+		$card_decline    = 'card' === strtolower( $result['payment_method'] )
+			&& '' === $result['iris_transaction_id'] && '' === $result['iris_status'];
+		$pending_09      = '09' === $response_code && ! $card_decline;
+		$result['state'] = 'Failure' === $status_flag && ! $pending_09 ? 'declined' : 'pending';
 		return $result;
 	}
 

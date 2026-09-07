@@ -70,6 +70,11 @@ function epay_test_fake_follow_up_response( array $fields, $scenario ) {
 		$response_code  = '05';
 		$response_desc  = 'Declined by issuer';
 		$payment_method = 'Card';
+	} elseif ( in_array( $scenario, array( 'failure_09_iris', 'failure_09_unknown', 'failure_09_card' ), true ) ) {
+		$status_flag    = 'Failure';
+		$response_code  = '09';
+		$response_desc  = 'Transaction response 09';
+		$payment_method = 'failure_09_card' === $scenario ? 'Card' : ( 'failure_09_iris' === $scenario ? 'IRIS' : '' );
 	} elseif ( 'identity_mismatch' === $scenario ) {
 		$reference .= '-WRONG';
 	} elseif ( 'incomplete_paid' === $scenario ) {
@@ -89,8 +94,8 @@ function epay_test_fake_follow_up_response( array $fields, $scenario ) {
 			. '<ApprovalCode>TST123</ApprovalCode><RetrievalRef>TSTREF123456</RetrievalRef>'
 			. '<PackageNo>1</PackageNo><SessionKey></SessionKey>'
 			. '<PaymentMethod>%5$s</PaymentMethod>'
-			. '<IRISTransactionID>TST-IRIS-987654321</IRISTransactionID>'
-			. '<IRISStatus>Authorised</IRISStatus>'
+			. '<IRISTransactionID>%8$s</IRISTransactionID>'
+			. '<IRISStatus>%9$s</IRISStatus>'
 			. '</TransactionInfo></Body>',
 			epay_test_fake_epay_xml( $status_flag ),
 			epay_test_fake_epay_xml( $response_code ),
@@ -98,7 +103,9 @@ function epay_test_fake_follow_up_response( array $fields, $scenario ) {
 			epay_test_fake_epay_xml( $reference ),
 			epay_test_fake_epay_xml( $payment_method ),
 			epay_test_fake_epay_xml( $transaction_id ),
-			epay_test_fake_epay_xml( $transaction_at )
+			epay_test_fake_epay_xml( $transaction_at ),
+			'Success' === $status_flag ? 'TST-IRIS-987654321' : '',
+			'Success' === $status_flag ? 'Authorised' : ''
 		);
 	}
 

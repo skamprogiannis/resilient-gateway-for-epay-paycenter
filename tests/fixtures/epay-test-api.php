@@ -159,6 +159,7 @@ function epay_test_describe_order( $order ) {
 			'result_code'                => (string) $order->get_meta( '_epay_result_code', true ),
 			'payment_method'             => (string) $order->get_meta( '_epay_payment_method', true ),
 			'follow_up'                  => epay_test_ticket_follow_up( $order->get_id() ),
+			'stock_release_scheduled'    => false !== wp_next_scheduled( 'epay_paycenter_release_stock', array( $order->get_id() ) ),
 			'follow_up_multiple_payments'=> rest_sanitize_boolean( $order->get_meta( '_epay_follow_up_multiple_payments', true ) ),
 			'follow_up_late_payment'     => rest_sanitize_boolean( $order->get_meta( '_epay_follow_up_late_payment', true ) ),
 			'has_recharge_attempt'       => '' !== (string) $order->get_meta( '_epay_recharge_attempt_at', true ),
@@ -319,7 +320,7 @@ function epay_test_set_fake_waf_result( $request ) {
 }
 
 function epay_test_set_fake_follow_up( $request ) {
-	$allowed_scenarios = array( 'paid', 'pending', 'declined', 'not_found', 'identity_mismatch', 'incomplete_paid', 'transport_error' );
+	$allowed_scenarios = array( 'paid', 'pending', 'declined', 'not_found', 'identity_mismatch', 'incomplete_paid', 'transport_error', 'failure_09_iris', 'failure_09_unknown', 'failure_09_card' );
 	$allowed_channels  = array( 'eCommerce', '3DSecure' );
 	$scenario          = sanitize_key( (string) $request->get_param( 'scenario' ) );
 	$channel           = sanitize_text_field( (string) $request->get_param( 'channel' ) );
@@ -336,6 +337,8 @@ function epay_test_set_fake_follow_up( $request ) {
 }
 
 function epay_test_reset_follow_up() {
+	delete_option( 'epay_paycenter_reconcile_report' );
+	delete_transient( 'epay_paycenter_reconcile_dismissed' );
 	$settings                      = (array) get_option( 'woocommerce_epay_paycenter_settings', array() );
 	$settings['follow_up_enabled'] = 'no';
 	update_option( 'woocommerce_epay_paycenter_settings', $settings, false );
@@ -476,6 +479,40 @@ function epay_test_run_follow_up_worker() {
 		return new WP_Error( 'epay_test_follow_up_unavailable', 'Follow-up implementation is unavailable.', array( 'status' => 501 ) );
 	}
 	return array( 'result' => Epay_Paycenter_Reconciliation::run() );
+}
+
+/** Seed only synthetic rows in the state written by the previous parser. */
+function epay_test_seed_closed_09( $request ) {
+	global $wpdb;
+	$order = wc_get_order( (int) $request['id'] );
+	if ( ! $order instanceof WC_Order ) {
+		return new WP_Error( 'missing_order', 'Synthetic order not found.', array( 'status' => 404 ) );
+	}
+	$order->update_status( 'failed', 'TST previous parser declined an ambiguous response.' );
+	$wpdb->update( $wpdb->prefix . 'epay_paycenter_tickets', array(
+		'status' => 'failed', 'follow_up_state' => 'declined', 'follow_up_attempts' => 1,
+		'follow_up_result_code' => '0', 'follow_up_status_flag' => 'Failure',
+		'follow_up_response_code' => '09',
+		'follow_up_payment_method' => 'card' === $request->get_param( 'method' ) ? 'Card' : '',
+		'resolution_source' => 'follow_up', 'resolved_at' => gmdate( 'Y-m-d H:i:s' ),
+		'next_check_at' => null,
+	), array( 'order_id' => $order->get_id() ) );
+	delete_option( 'epay_paycenter_ambiguous_09_repaired' );
+	update_option( 'epay_paycenter_db_version', '2.1' );
+	return epay_test_describe_order( $order );
+}
+
+function epay_test_age_attempt( $request ) {
+	global $wpdb;
+	$wpdb->update( $wpdb->prefix . 'epay_paycenter_tickets',
+		array( 'created_at' => gmdate( 'Y-m-d H:i:s', time() - 3 * DAY_IN_SECONDS ) ),
+		array( 'order_id' => (int) $request['id'] ) );
+	return array( 'aged' => true );
+}
+
+function epay_test_drop_stock_event( $request ) {
+	wp_clear_scheduled_hook( 'epay_paycenter_release_stock', array( (int) $request['id'] ) );
+	return array( 'cleared' => true );
 }
 
 function epay_test_prioritise_follow_up( $request ) {
@@ -764,6 +801,9 @@ add_action(
 		register_rest_route( 'epay-test/v1', '/follow-up/persist-paid-sibling/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_persist_paid_sibling' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/worker', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_run_follow_up_worker' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/prioritise/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_prioritise_follow_up' ) );
+		register_rest_route( 'epay-test/v1', '/follow-up/seed-closed-09/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_seed_closed_09' ) );
+		register_rest_route( 'epay-test/v1', '/follow-up/age-attempt/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_age_attempt' ) );
+		register_rest_route( 'epay-test/v1', '/follow-up/drop-stock-event/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_drop_stock_event' ) );
 		register_rest_route( 'epay-test/v1', '/trash-order/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_trash_order' ) );
 		register_rest_route( 'epay-test/v1', '/refund-order/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_refund_order' ) );
 		register_rest_route( 'epay-test/v1', '/mark-local-paid/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_mark_order_locally_paid' ) );

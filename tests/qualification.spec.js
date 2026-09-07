@@ -382,7 +382,7 @@ test('@callback legacy plaintext credentials migrate once without changing bank 
 
     const migrated = await setFixture(request, 'credential-migration', { action: 'upgrade' });
     expect(migrated).toEqual({
-      db_version: '2.1',
+      db_version: '2.2',
       stored_password: `md5:${digest}`,
       password_digest: digest,
     });
@@ -1033,6 +1033,60 @@ test('@followup treats result 1010 as inconclusive and can recover on a later ch
   expect(recovered.order.epay.ticket_statuses).toEqual({
     [attempt.MerchantReference]: 'succeeded',
   });
+});
+
+for (const method of ['iris', 'unknown', 'card']) {
+  test(`@followup Failure/09 ${method} only ends checking for an identified card decline`, async ({ request }) => {
+    const order = await createOrder(request);
+    const attempt = await issueAttempt(request, order);
+    await verifyAndEnableFollowUp(request, order);
+    await setFixture(request, 'fake-follow-up', { scenario: `failure_09_${method}`, channel: 'eCommerce' });
+    const checked = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+    expect(checked.order.status).toBe(method === 'card' ? 'failed' : 'pending');
+    expect(checked.order.epay.follow_up[attempt.MerchantReference]).toMatchObject({
+      state: method === 'card' ? 'declined' : 'pending', response_code: '09',
+    });
+    expect(checked.result.paid).toBe(0);
+    if (method !== 'card') {
+      await setFixture(request, 'fake-follow-up', { scenario: 'paid', channel: 'eCommerce' });
+      const recovered = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+      expect(['processing', 'completed']).toContain(recovered.order.status);
+      expect(recovered.result.paid).toBe(1);
+    }
+  });
+}
+
+test('@followup upgrade resumes an ambiguous closed 09 without reopening a card decline', async ({ request }) => {
+  const card = await createOrder(request);
+  await issueAttempt(request, card);
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, `follow-up/seed-closed-09/${card.order_id}`, { method: 'card' });
+  await setFixture(request, `follow-up/seed-closed-09/${order.order_id}`, { method: 'unknown' });
+  await setFixture(request, 'fake-follow-up', { scenario: 'paid', channel: 'eCommerce' });
+  await setFixture(request, `follow-up/prioritise/${order.order_id}`, {});
+  await setFixture(request, 'follow-up/worker', {});
+  const recovered = await readOrder(request, order.order_id);
+  expect(['processing', 'completed']).toContain(recovered.status);
+  expect(recovered.epay.follow_up[attempt.MerchantReference].state).toBe('paid');
+  expect((await readOrder(request, card.order_id)).status).toBe('failed');
+});
+
+test('@followup an unpaid order regains its stock-release timer after package deactivation', async ({ request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, attempt.MerchantReference, {
+    ResponseCode: '09', StatusFlag: 'Failure', PaymentMethod: 'IRIS', CardType: '15',
+  }));
+  await setFixture(request, `follow-up/drop-stock-event/${order.order_id}`, {});
+  await setFixture(request, 'fake-follow-up', { scenario: 'pending', channel: 'eCommerce' });
+  await setFixture(request, `follow-up/prioritise/${order.order_id}`, {});
+  await setFixture(request, 'follow-up/worker', {});
+  const waiting = await readOrder(request, order.order_id);
+  expect(waiting.status).toBe('on-hold');
+  expect(waiting.epay.stock_release_scheduled).toBe(true);
 });
 
 test('@followup rejects an incomplete approved response without changing payment state', async ({ request }) => {

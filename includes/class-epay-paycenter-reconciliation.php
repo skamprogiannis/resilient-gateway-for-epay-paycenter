@@ -445,7 +445,10 @@ final class Epay_Paycenter_Reconciliation {
 			if ( empty( $rows ) ) {
 				return $summary;
 			}
-			$order      = wc_get_order( $order_id );
+			$order = wc_get_order( $order_id );
+			if ( $order instanceof WC_Order ) {
+				self::restore_stock_release( $order );
+			}
 			$can_mutate = $order instanceof WC_Order
 				&& EPAY_PAYCENTER_GATEWAY_ID === $order->get_payment_method()
 				&& ( $order->is_paid() || $order->has_status( array( 'pending', 'on-hold', 'failed', 'cancelled' ) ) );
@@ -931,6 +934,27 @@ final class Epay_Paycenter_Reconciliation {
 			return $cancel;
 		}
 		return ( time() - $created->getTimestamp() ) >= self::stock_hold_minutes() * MINUTE_IN_SECONDS;
+	}
+
+	/**
+	 * Restore timers removed during a package switch without extending the hold.
+	 *
+	 * @param WC_Order $order Order with an unfinished bank check.
+	 */
+	private static function restore_stock_release( WC_Order $order ): void {
+		$args    = array( $order->get_id() );
+		$created = $order->get_date_created();
+		if ( ! self::is_enabled() || ! $created || doing_action( self::STOCK_RELEASE_HOOK )
+			|| EPAY_PAYCENTER_GATEWAY_ID !== $order->get_payment_method()
+			|| ! $order->has_status( array( 'pending', 'on-hold' ) )
+			|| wp_next_scheduled( self::STOCK_RELEASE_HOOK, $args ) ) {
+			return;
+		}
+		$due    = max( time() + 10, $created->getTimestamp() + self::stock_hold_minutes() * MINUTE_IN_SECONDS );
+		$result = wp_schedule_single_event( $due, self::STOCK_RELEASE_HOOK, $args, true );
+		if ( is_wp_error( $result ) ) {
+			Epay_Paycenter_Logger::error( 'Could not restore ePay stock release after activation.', array( 'order_id' => $order->get_id() ) );
+		}
 	}
 
 	/**

@@ -85,7 +85,7 @@ final class Epay_Paycenter_Plugin {
 	 * Current schema and data-migration version. This is intentionally
 	 * independent from the public plugin version.
 	 */
-	const DB_VERSION = '2.1';
+	const DB_VERSION = '2.2';
 
 	/**
 	 * Normalize callbacks whose gateway path is repeated by the bank portal.
@@ -387,7 +387,32 @@ final class Epay_Paycenter_Plugin {
 			return;
 		}
 
+		if ( ! self::reopen_ambiguous_follow_up() ) {
+			return;
+		}
 		update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
+	}
+
+	/** Recheck premature FOLLOW_UP declines without changing any order or bank result. */
+	private static function reopen_ambiguous_follow_up(): bool {
+		global $wpdb;
+		// Retain the original response fields as evidence; the ordinary worker
+		// rechecks once even beyond 48h, then reports any continuing uncertainty.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE %i SET follow_up_state = 'pending', resolved_at = NULL,
+				 next_check_at = %s, resolution_source = ''
+				 WHERE follow_up_state = 'declined' AND resolution_source = 'follow_up'
+				 AND follow_up_result_code = '0' AND follow_up_status_flag = 'Failure'
+				 AND follow_up_response_code = '09'
+				 AND (LOWER(follow_up_payment_method) <> 'card'
+				 OR follow_up_iris_transaction_id <> '' OR follow_up_iris_status <> '')",
+				$wpdb->prefix . 'epay_paycenter_tickets',
+				gmdate( 'Y-m-d H:i:s' )
+			)
+		);
+		return false !== $result;
 	}
 
 	/**
