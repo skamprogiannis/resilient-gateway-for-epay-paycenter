@@ -65,7 +65,7 @@ function epay_test_layout_prepare( $request ) {
 		'woocommerce_enable_signup_and_login_from_checkout' => 'no',
 		'woocommerce_epay_paycenter_settings' => array_merge(
 			$settings,
-			array( 'enabled' => 'yes', 'title' => 'Card or IRIS', 'installments' => 'yes', 'max_installments' => '3', 'min_amount_for_installments' => '0', 'installments_tiers' => '', 'follow_up_enabled' => 'no' )
+			array( 'enabled' => 'yes', 'title' => 'Card or IRIS', 'installments' => false === $request->get_param( 'installments' ) ? 'no' : 'yes', 'max_installments' => (string) ( $request->get_param( 'max_installments' ) ?? '3' ), 'min_amount_for_installments' => '0', 'installments_tiers' => '', 'follow_up_enabled' => 'no' )
 		),
 		'epay_test_fake_epay_result_code' => '0',
 		'epay_test_fake_epay_barrier_target' => 0,

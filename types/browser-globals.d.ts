@@ -65,6 +65,8 @@ declare type EpayRenderable = EpayVirtualElement | EpayRenderable[] | boolean | 
 declare type EpayRenderableFactory = () => EpayRenderable;
 
 declare interface Window {
+  jQuery: (element: HTMLElement) => { on: (events: string, handler: () => void) => void };
+  epayPaycenterCheckout: { installmentsChanged: string };
   epayPaycenterAdmin?: EpayAdminConfig;
   wc?: {
     wcBlocksRegistry?: {

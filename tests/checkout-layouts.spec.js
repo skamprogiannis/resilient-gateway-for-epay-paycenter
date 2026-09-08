@@ -1,8 +1,8 @@
 const crypto = require('node:crypto');
 const { test, expect } = require('@playwright/test');
 
-async function setLayout(request, layout) {
-  const response = await request.post('/wp-json/epay-test/v1/checkout-layout', { data: { layout } });
+async function setLayout(request, layout, options = {}) {
+  const response = await request.post('/wp-json/epay-test/v1/checkout-layout', { data: { layout, ...options } });
   expect(response.ok(), await response.text()).toBe(true);
   return response.json();
 }
@@ -17,6 +17,24 @@ async function fillClassicBilling(page) {
   await page.locator('#billing_phone').fill('+306912345678');
   await page.locator('#billing_email').fill('checkout-layout@example.test');
   await page.locator('#billing_state').selectOption('I', { force: true });
+}
+
+async function refreshClassicCheckout(page) {
+  await page.evaluate(() => new Promise((resolve) => {
+    window.jQuery(document.body).one('updated_checkout', resolve).trigger('update_checkout');
+  }));
+}
+
+async function selectDuringRefresh(page, value) {
+  await page.route('**/?wc-ajax=update_order_review', async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    // WooCommerce skips byte-identical fragments; exercise an actual replacement.
+    data.fragments['.woocommerce-checkout-payment'] += '\n<!-- checkout refresh regression -->';
+    await page.locator('#epay_installments').selectOption(value);
+    await route.fulfill({ response, json: data });
+  }, { times: 1 });
+  await refreshClassicCheckout(page);
 }
 
 async function fillBlocksBilling(page) {
@@ -44,6 +62,26 @@ test.describe('checkout layouts', () => {
     await setLayout(request, 'restore');
   });
 
+  test('@installments refresh warns about an unavailable choice and respects disabled installments', async ({ page, request }) => {
+    const fixture = await setLayout(request, 'classic');
+    await page.goto(fixture.add_to_cart_url);
+    await fillClassicBilling(page);
+    await refreshClassicCheckout(page);
+    await setLayout(request, 'classic', { max_installments: 2 });
+    await selectDuringRefresh(page, '3');
+    await expect(page.locator('#epay_installments')).toHaveValue('1');
+    await expect(page.locator('#epay-installments-notice')).toContainText('please review your payment choice');
+    await page.locator('#epay_installments').selectOption('2');
+    await expect(page.locator('#epay-installments-notice')).toHaveCount(0);
+    await setLayout(request, 'classic', { installments: false });
+    await refreshClassicCheckout(page);
+    await expect(page.locator('#epay_installments')).toHaveCount(0);
+    await expect(page.locator('#epay-installments-notice')).toBeVisible();
+    await page.reload();
+    await expect(page.locator('#epay_installments')).toHaveCount(0);
+    await expect(page.locator('#epay-installments-notice')).toHaveCount(0);
+  });
+
   for (const layout of ['classic', 'blocks']) {
     test(`@matrix ${layout} checkout submits a real cart through ePay`, async ({ page, request }) => {
       const fixture = await setLayout(request, layout);
@@ -61,8 +99,11 @@ test.describe('checkout layouts', () => {
       if (layout === 'classic') {
         await expect(page.locator('form.checkout')).toBeVisible();
         await fillClassicBilling(page);
+        await refreshClassicCheckout(page);
         await page.locator('#payment_method_epay_paycenter').check({ force: true });
-        await page.locator('#epay_installments').selectOption('3');
+        // Finish a real payment-fragment refresh after the customer chooses installments.
+        await selectDuringRefresh(page, '3');
+        await expect(page.locator('#epay_installments')).toHaveValue('3');
         const terms = page.locator('#terms');
         if (await terms.count()) await terms.check();
         await page.locator('#place_order').click();

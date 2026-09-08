@@ -286,6 +286,15 @@ final class Epay_Paycenter_Plugin {
 			array(),
 			$version
 		);
+		if ( is_checkout_pay_page() || is_order_received_page() || has_block( 'woocommerce/checkout', wc_get_page_id( 'checkout' ) ) ) {
+			return;
+		}
+		wp_enqueue_script( 'epay-paycenter-checkout', EPAY_PAYCENTER_PLUGIN_URL . 'assets/js/epay-paycenter-checkout.js', array( 'jquery', 'wc-checkout' ), $version, true );
+		wp_localize_script(
+			'epay-paycenter-checkout',
+			'epayPaycenterCheckout',
+			array( 'installmentsChanged' => __( 'Installment options changed. One-time payment is selected; please review your payment choice.', 'resilient-gateway-for-epay-paycenter' ) )
+		);
 	}
 
 	/**
