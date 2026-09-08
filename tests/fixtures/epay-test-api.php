@@ -132,7 +132,7 @@ function epay_test_ticket_follow_up( $order_id ) {
 	$rows = $wpdb->get_results(
 		$wpdb->prepare(
 			"SELECT merchant_reference, follow_up_state, follow_up_attempts, follow_up_result_code,
-				follow_up_response_code, follow_up_status_flag, follow_up_payment_method
+				follow_up_response_code, follow_up_status_flag, follow_up_payment_method, created_at, next_check_at, resolved_at
 			 FROM {$table} WHERE order_id = %d ORDER BY id ASC",
 			$order_id
 		),
@@ -149,6 +149,9 @@ function epay_test_ticket_follow_up( $order_id ) {
 				'response_code' => (string) $row['follow_up_response_code'],
 				'status_flag'   => (string) $row['follow_up_status_flag'],
 				'payment_method'=> (string) $row['follow_up_payment_method'],
+				'created_at'    => $row['created_at'],
+				'next_check_at' => $row['next_check_at'],
+				'resolved_at'   => $row['resolved_at'],
 			);
 		}
 	}
@@ -373,6 +376,7 @@ function epay_test_reset_follow_up() {
 	delete_transient( 'epay_paycenter_reconcile_dismissed' );
 	$settings                      = (array) get_option( 'woocommerce_epay_paycenter_settings', array() );
 	$settings['follow_up_enabled'] = 'no';
+	unset( $settings['follow_up_window_hours'] );
 	update_option( 'woocommerce_epay_paycenter_settings', $settings, false );
 	delete_option( 'epay_paycenter_follow_up_verification' );
 	delete_option( 'epay_paycenter_follow_up_active' );
@@ -549,8 +553,9 @@ function epay_test_seed_closed_09( $request ) {
 
 function epay_test_age_attempt( $request ) {
 	global $wpdb;
+	$age = null === $request->get_param( 'age_seconds' ) ? 3 * DAY_IN_SECONDS : absint( $request->get_param( 'age_seconds' ) );
 	$wpdb->update( $wpdb->prefix . 'epay_paycenter_tickets',
-		array( 'created_at' => gmdate( 'Y-m-d H:i:s', time() - 3 * DAY_IN_SECONDS ) ),
+		array( 'created_at' => gmdate( 'Y-m-d H:i:s', time() - $age ) ),
 		array( 'order_id' => (int) $request['id'] ) );
 	return array( 'aged' => true );
 }

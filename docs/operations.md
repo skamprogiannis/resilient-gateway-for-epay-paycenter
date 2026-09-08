@@ -50,9 +50,20 @@ re-enabling recovery.
 ## Recovery behavior
 
 The worker checks unresolved attempts approximately 5, 15, and 30 minutes and
-1, 2, 4, 8, 24, and 48 hours after ticket creation. WordPress cron depends on
-site traffic, so these are eligibility checkpoints, not guaranteed execution
-times.
+1, 2, 4, 8, 24, and 48 hours after ticket creation by default. **Recheck payments
+for (hours)** accepts 1–168 whole hours; the default remains 48. Checkpoints
+beyond the chosen window are omitted, longer windows continue daily, and a
+final checkpoint is included at the chosen endpoint. WordPress cron depends on
+site traffic, so execution can occur later; missed intermediate checkpoints
+are not replayed.
+
+Changing the duration applies to new and still-running attempts, measured from
+their original creation time. It does not reopen expired or reviewed cases.
+After shortening the window, overdue attempts receive their final check from
+the worker, not from the settings-save request. Technical query errors retain
+hourly retries beyond the window only while fewer than three total attempts
+have been made (at most two extra retries). Bank-approved results awaiting
+local settlement retain their separate recovery path.
 
 A result can complete an order only when it has:
 
@@ -68,12 +79,12 @@ FOLLOW_UP `Failure/09` also stays retryable unless the response explicitly
 identifies a card and contains no IRIS fields. A missing payment method is not
 proof of a card decline. Upgrading to 2.0.1 resumes ambiguous attempts that an
 older parser closed. It does not itself change an order's status. Attempts
-already older than 48 hours get one further check and then a review case if
+already beyond the configured window get one further check and then a review case if
 the bank result remains inconclusive.
 
 While recovery is active, stock for this gateway is reserved for 240 minutes by
 default. The merchant setting accepts 60 to 1440 minutes. Recovery continues
-until 48 hours after ticket creation, not 48 hours after stock release.
+for its independently configured window after ticket creation, not stock release.
 If a payment is recovered after an
 order became cancelled or failed, verify stock and fulfilment before dispatch.
 
@@ -102,8 +113,8 @@ gateway's settings page:
   attention. Expanded; it is not itself proof of payment or failure.
 - **Unconfirmed attempts:** automatic checks ended without a final result.
   Collapsed; check each MerchantReference in AdminTool before acknowledging it.
-- **Historical checks:** unresolved attempts first checked after the 48-hour
-  recovery window. The label and classification are unchanged. Normally
+- **Historical checks:** unresolved attempts first checked after the applicable
+  recovery window. Existing classifications are retained. Normally
   monitored attempts do not move here merely because they become older.
 
 An old date never hides a confirmed payment discrepancy. Final declined
@@ -131,7 +142,7 @@ UTC time without changing the order or deleting bank evidence. Reviewed cases
 remain available in gateway settings. Changing an order to Processing alone
 does not establish that its bank checks were resolved.
 
-### Updating from 2.0.1 to 2.0.2
+### Updating from 2.0.1 or 2.0.2 to 2.1.0
 
 Back up the site, then upload the versioned plugin ZIP through WordPress and
 choose to replace the installed public plugin. Do not delete or uninstall it
@@ -141,8 +152,14 @@ credentials are unchanged.
 
 Check that recovery is still enabled and that the groups appear on Orders,
 not the Dashboard. The first completed worker run populates its timestamp.
-No order-status corrections or changes to bank callback URLs are required by
-this update.
+The merged recovery card includes verification, activation, recheck duration,
+and stock reservation. Existing installations use the unchanged 48-hour
+default. No order-status corrections or bank callback URL changes are required.
+
+Classic checkout preserves a still-valid installment choice across payment
+section refreshes. If the chosen count is no longer offered, it selects
+one-time payment and asks the customer to review the choice. Installments remain
+disabled unless the merchant enables them; Blocks continues to use one payment.
 
 ## Cancellation returns
 

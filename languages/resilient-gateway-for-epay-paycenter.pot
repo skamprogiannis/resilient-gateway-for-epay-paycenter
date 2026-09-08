@@ -1,4 +1,4 @@
-# Copyright (C) 2026 skamprogiannis
+# Copyright (C) 2026 Stephanos Kamprogiannis
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-07T21:00:03+00:00\n"
+"POT-Creation-Date: 2026-09-08T07:59:51+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.9.0\n"
 "X-Domain: resilient-gateway-for-epay-paycenter\n"
@@ -27,7 +27,7 @@ msgid "A resilient WooCommerce gateway for the ePay Paycenter Redirection sale f
 msgstr ""
 
 #. Author of the plugin
-msgid "skamprogiannis"
+msgid "Stephanos Kamprogiannis"
 msgstr ""
 
 #. Author URI of the plugin
@@ -124,12 +124,12 @@ msgid "Use the test environment when validating test transactions. Credentials f
 msgstr ""
 
 #: includes/class-epay-paycenter-gateway.php:200
-#: includes/class-epay-paycenter-gateway.php:366
+#: includes/class-epay-paycenter-gateway.php:381
 msgid "Test account"
 msgstr ""
 
 #: includes/class-epay-paycenter-gateway.php:201
-#: includes/class-epay-paycenter-gateway.php:366
+#: includes/class-epay-paycenter-gateway.php:381
 msgid "Live account"
 msgstr ""
 
@@ -242,325 +242,337 @@ msgid "Use ePay FOLLOW_UP to reconcile missing callbacks"
 msgstr ""
 
 #: includes/class-epay-paycenter-gateway.php:286
-msgid "First verify the channel with a known successful order in the diagnostic card above. Once enabled, the plugin checks unresolved attempts for up to 48 hours and marks an order paid only after an exact approved bank response."
+msgid "Verify the channel above, then enable recovery and save. Only an exact approved bank response can mark an order paid."
 msgstr ""
 
 #: includes/class-epay-paycenter-gateway.php:289
-msgid "ePay stock reservation"
+msgid "Recheck payments for (hours)"
 msgstr ""
 
 #: includes/class-epay-paycenter-gateway.php:297
-msgid "Minutes to reserve stock for unpaid ePay orders (default: 240 / four hours). Follow-up checks continue for 48 hours even after stock is released."
+msgid "1–168 hours from each payment attempt (default: 48). Applies to new and ongoing checks, not expired or reviewed cases. Technical failures may receive up to two extra hourly retries; WordPress scheduling can delay checks. Stock reservation is separate."
 msgstr ""
 
 #: includes/class-epay-paycenter-gateway.php:300
+msgid "ePay stock reservation"
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:308
+msgid "Minutes to reserve stock for unpaid ePay orders (default: 240 / four hours). Changing the recheck duration does not extend stock reservation."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:311
 msgid "Logging"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:302
+#: includes/class-epay-paycenter-gateway.php:313
 msgid "Enable debug logging to WooCommerce → Status → Logs (source: epay-paycenter). Credentials are never logged."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:335
+#: includes/class-epay-paycenter-gateway.php:346
 msgid "ePay Paycenter for WooCommerce"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:341
+#: includes/class-epay-paycenter-gateway.php:352
 msgid "Accept credit and debit card payments through the Piraeus Bank / Euronet Merchant Services secure Redirection service."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:406
+#: includes/class-epay-paycenter-gateway.php:420
 msgid "Integration resources"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:412
+#: includes/class-epay-paycenter-gateway.php:426
 msgid "Resources"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:420
+#: includes/class-epay-paycenter-gateway.php:434
 msgid "WooCommerce → Status → Logs"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:426
+#: includes/class-epay-paycenter-gateway.php:440
 msgid "Orders paid via Paycenter"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:432
+#: includes/class-epay-paycenter-gateway.php:446
 msgid "Installed plugins"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:443
+#: includes/class-epay-paycenter-gateway.php:457
 msgid "About this plugin"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:448
+#: includes/class-epay-paycenter-gateway.php:462
 msgid "Implements the official ePay Paycenter Redirection v2.9 specification: SOAP ticketing, HMAC-SHA256 response verification, HPOS and Checkout Blocks support."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:451
+#: includes/class-epay-paycenter-gateway.php:465
 msgid "Published under GPL-2.0-or-later by WebHosting4U. \"ePay\", \"Paycenter\" and the Piraeus Bank payment mark are trademarks of Piraeus Bank S.A. / Euronet Merchant Services."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:474
+#: includes/class-epay-paycenter-gateway.php:488
 msgid "General"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:479
+#: includes/class-epay-paycenter-gateway.php:493
 msgid "Merchant credentials"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:481
+#: includes/class-epay-paycenter-gateway.php:495
 msgid "Credentials are provided by Euronet Merchant Services. Test and live accounts use separate credential sets."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:485
+#: includes/class-epay-paycenter-gateway.php:499
 msgid "Payment behaviour"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:490
+#: includes/class-epay-paycenter-gateway.php:504
 msgid "Installments"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:492
+#: includes/class-epay-paycenter-gateway.php:506
 msgid "Activation by Euronet Merchant Services is required. Installments are interest-free for the customer (the merchant absorbs the bank commission). Installments are not available for IRIS payments."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:496
-#: includes/class-epay-paycenter-gateway.php:1865
+#: includes/class-epay-paycenter-gateway.php:510
+#: includes/class-epay-paycenter-gateway.php:1905
 msgid "Missing-response recovery"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:498
+#: includes/class-epay-paycenter-gateway.php:512
 msgid "These controls recover payments that ePay later resolves through DIAS but cannot send back through the normal callback flow."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:502
+#: includes/class-epay-paycenter-gateway.php:516
 msgid "Advanced & logging"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:558
+#: includes/class-epay-paycenter-gateway.php:572
 msgid "Website URL"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:560
+#: includes/class-epay-paycenter-gateway.php:574
 msgid "Your site origin. This is the URL from which test or live transactions are initiated."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:563
+#: includes/class-epay-paycenter-gateway.php:577
 msgid "Referrer URL"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:565
+#: includes/class-epay-paycenter-gateway.php:579
 msgid "Page that initiates the payment. Paycenter receives the POST from the auto-submit form rendered on the order pay page that follows checkout."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:568
+#: includes/class-epay-paycenter-gateway.php:582
 msgid "Success URL"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:570
+#: includes/class-epay-paycenter-gateway.php:584
 msgid "Paycenter posts the successful transaction response to this URL. The plugin verifies it via HMAC-SHA256 HashKey before marking the order paid."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:573
+#: includes/class-epay-paycenter-gateway.php:587
 msgid "Failure URL"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:575
+#: includes/class-epay-paycenter-gateway.php:589
 msgid "Paycenter posts a failed-transaction response to this URL. The plugin handler uses ResultCode / StatusFlag to flag the order as failed."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:578
+#: includes/class-epay-paycenter-gateway.php:592
 msgid "Backlink URL"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:580
+#: includes/class-epay-paycenter-gateway.php:594
 msgid "URL the customer is sent to when pressing \"Cancel\" on the Paycenter page. The plugin appends a per-order token automatically via the ParamBackLink field at ticket creation."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:597
+#: includes/class-epay-paycenter-gateway.php:611
 msgid "Outbound IP (the value ePay needs)"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:598
+#: includes/class-epay-paycenter-gateway.php:612
 msgid "Not detected automatically"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:599
+#: includes/class-epay-paycenter-gateway.php:613
 msgid "The address this server uses when it calls the Paycenter ticketing service, and the one to register with Euronet Merchant Services. WordPress cannot read it, because only a request to an outside host reveals it. To find it, run  curl -4 https://api.ipify.org  on the server over SSH, or ask your hosting provider for the outbound (egress) IP. Hosts and developers can publish it here with the epay_paycenter_outbound_ip filter."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:602
+#: includes/class-epay-paycenter-gateway.php:616
 msgid "Website IP (not the value for ePay)"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:603
+#: includes/class-epay-paycenter-gateway.php:617
 msgid "Not detected"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:604
+#: includes/class-epay-paycenter-gateway.php:618
 msgid "The address this site is served on, as reported by WordPress. Behind a reverse proxy, load balancer, NAT or on a server with more than one IP, this is not the address that reaches Paycenter. Do not give this value to the bank unless your hosting provider has confirmed that the incoming and outgoing addresses are the same."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:607
+#: includes/class-epay-paycenter-gateway.php:621
 msgid "Response method"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:608
+#: includes/class-epay-paycenter-gateway.php:622
 msgid "POST (recommended). GET is also accepted."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:609
+#: includes/class-epay-paycenter-gateway.php:623
 msgid "Method Paycenter uses to deliver the transaction response to the Success / Failure URLs. The plugin handler accepts both; POST is the recommended choice on the merchant form."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1000
+#: includes/class-epay-paycenter-gateway.php:783
+msgid "Enter a whole number of hours from 1 to 168."
+msgstr ""
+
+#: includes/class-epay-paycenter-gateway.php:1039
 msgid "Order could not be loaded."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1015
+#: includes/class-epay-paycenter-gateway.php:1054
 msgid "Awaiting Paycenter payment."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1034
+#: includes/class-epay-paycenter-gateway.php:1073
 msgid "Order not found."
 msgstr ""
 
 #. translators: %s currency code
-#: includes/class-epay-paycenter-gateway.php:1189
+#: includes/class-epay-paycenter-gateway.php:1228
 msgid "Currency %s is not supported by Paycenter."
 msgstr ""
 
 #. translators: 1: result code, 2: description
-#: includes/class-epay-paycenter-gateway.php:1505
+#: includes/class-epay-paycenter-gateway.php:1544
 msgid "Paycenter ticketing failed. Result code: %1$s. Description: %2$s."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1514
+#: includes/class-epay-paycenter-gateway.php:1553
 msgid "We could not start a secure card payment at the moment. Please try again later or choose a different payment method."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1518
+#: includes/class-epay-paycenter-gateway.php:1557
 msgid "Return to checkout"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1535
+#: includes/class-epay-paycenter-gateway.php:1574
 msgid "You do not have permission to run this diagnostic."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1589
+#: includes/class-epay-paycenter-gateway.php:1628
 msgid "The self-test POST could not be issued from this server. This usually means the WordPress host cannot reach its own public URL (DNS / loopback / TLS issue). Paycenter callbacks from the bank are a separate ingress path and may still work, but this self-test cannot validate them without loopback connectivity."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1685
+#: includes/class-epay-paycenter-gateway.php:1724
 msgid "Bank integration data"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1688
+#: includes/class-epay-paycenter-gateway.php:1727
 msgid "Values to submit to Euronet Merchant Services"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1695
+#: includes/class-epay-paycenter-gateway.php:1734
 msgid "Copy the following values into the technical data form provided by Euronet Merchant Services / Piraeus Bank when requesting test or live credentials. Values are generated from this WordPress installation and will change if the site URL moves."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1713
+#: includes/class-epay-paycenter-gateway.php:1752
 msgid "Copy callback URLs to clipboard"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1715
-#: includes/class-epay-paycenter-gateway.php:1737
+#: includes/class-epay-paycenter-gateway.php:1754
+#: includes/class-epay-paycenter-gateway.php:1776
 #: includes/class-epay-paycenter-plugin.php:245
 msgid "Copy"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1735
+#: includes/class-epay-paycenter-gateway.php:1774
 msgid "Copy IP address to clipboard"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1777
+#: includes/class-epay-paycenter-gateway.php:1816
 msgid "Cloudflare detected on this site"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1780
+#: includes/class-epay-paycenter-gateway.php:1819
 msgid "This store appears to be served through Cloudflare (a CF-Ray / CF-Connecting-IP header was detected on the current request). Requests from Paycenter to your Success / Failure / Backlink URLs therefore reach your site through Cloudflare edge IPs, not only from the web server address shown above. To avoid blocked callbacks, ask Euronet Merchant Services to whitelist the full Cloudflare IPv4 range in addition to your webserver IP."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1783
+#: includes/class-epay-paycenter-gateway.php:1822
 msgid "Contact the following addresses and request that the Cloudflare IPv4 ranges be added to your merchant record:"
 msgstr ""
 
 #. translators: %s: link to Cloudflare's official IPv4 list.
-#: includes/class-epay-paycenter-gateway.php:1800
+#: includes/class-epay-paycenter-gateway.php:1839
 msgid "The authoritative Cloudflare IPv4 list is always published at %s and is updated by Cloudflare when their edge network changes."
 msgstr ""
 
 #. translators: %d: number of CIDR ranges fetched.
-#: includes/class-epay-paycenter-gateway.php:1813
+#: includes/class-epay-paycenter-gateway.php:1852
 msgid "Current Cloudflare IPv4 ranges (%d CIDR)"
 msgid_plural "Current Cloudflare IPv4 ranges (%d CIDRs)"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-epay-paycenter-gateway.php:1820
+#: includes/class-epay-paycenter-gateway.php:1859
 msgid "Copy Cloudflare IPv4 ranges to clipboard"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1822
+#: includes/class-epay-paycenter-gateway.php:1861
 msgid "Copy all ranges"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1826
+#: includes/class-epay-paycenter-gateway.php:1865
 msgid "Fetched from Cloudflare and cached for 12 hours. Copy these CIDRs into the email alongside your webserver IP."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1830
+#: includes/class-epay-paycenter-gateway.php:1869
 msgid "The live Cloudflare IPv4 list could not be fetched from this server right now. Please copy it manually from the link above."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1853
+#: includes/class-epay-paycenter-gateway.php:1893
 msgid "Active"
 msgstr ""
 
 #. translators: %s: verified ePay ChannelType (eCommerce or 3DSecure).
-#: includes/class-epay-paycenter-gateway.php:1856
+#: includes/class-epay-paycenter-gateway.php:1896
 #: includes/class-epay-paycenter-reconciliation.php:197
 msgid "Verified: %s"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1858
+#: includes/class-epay-paycenter-gateway.php:1898
 msgid "Not verified"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1873
+#: includes/class-epay-paycenter-gateway.php:1913
 msgid "Use an ePay order that is already shown as successful in the AdminTool. The test tries eCommerce and then 3DSecure with AcquirerID GR014. It reads the bank result but does not change the order."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1876
+#: includes/class-epay-paycenter-gateway.php:1916
 msgid "Successful order ID"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1880
+#: includes/class-epay-paycenter-gateway.php:1920
 msgid "Verify follow-up channel"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1902
+#: includes/class-epay-paycenter-gateway.php:1949
 msgid "Callback diagnostics"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1905
+#: includes/class-epay-paycenter-gateway.php:1952
 msgid "Detect host-WAF interception before going live"
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1910
+#: includes/class-epay-paycenter-gateway.php:1957
 msgid "Some shared-hosting firewalls (cPFence, ModSecurity / OWASP CRS, Imunify360, BitNinja, LiteSpeed WAF) can intercept the Paycenter failure callbacks because their payloads contain patterns (dash-only TransactionDateTime, Greek error text, empty HashKey on declined transactions) that look like attack signatures. The test below issues a realistic declined-transaction POST from this WordPress server to the plugin's own callback URL and reports whether it is blocked before it reaches PHP. No order is created or modified; the synthetic payload carries a WAFTEST- merchant reference that no order in the database can match."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1913
+#: includes/class-epay-paycenter-gateway.php:1960
 msgid "Scope: this exercises your local webserver / host WAF (ModSecurity, cPFence, Imunify360, BitNinja, LiteSpeed). CDN-level WAFs that sit in front of your origin (Cloudflare, Sucuri, Akamai) are not exercised by the loopback POST; their rules must be tested with an external probe."
 msgstr ""
 
-#: includes/class-epay-paycenter-gateway.php:1918
+#: includes/class-epay-paycenter-gateway.php:1965
 msgid "Test callback URL"
 msgstr ""
 
@@ -824,11 +836,15 @@ msgstr ""
 msgid "Transaction time:"
 msgstr ""
 
-#: includes/class-epay-paycenter-plugin.php:357
+#: includes/class-epay-paycenter-plugin.php:296
+msgid "Installment options changed. One-time payment is selected; please review your payment choice."
+msgstr ""
+
+#: includes/class-epay-paycenter-plugin.php:366
 msgid "Settings"
 msgstr ""
 
-#: includes/class-epay-paycenter-plugin.php:518
+#: includes/class-epay-paycenter-plugin.php:527
 msgid "ePay Paycenter for WooCommerce requires WooCommerce to be installed and active."
 msgstr ""
 
@@ -882,8 +898,9 @@ msgstr ""
 msgid "URGENT: ePay FOLLOW_UP found %d successful MerchantReferences for this order. Check the AdminTool for a possible duplicate charge before fulfilment."
 msgstr ""
 
-#: includes/class-epay-paycenter-reconciliation.php:1055
-msgid "ePay payment was not confirmed within the four-hour stock reservation. Bank follow-up continues for 48 hours."
+#. translators: 1: stock reservation in minutes, 2: bank-recheck window in hours.
+#: includes/class-epay-paycenter-reconciliation.php:1059
+msgid "ePay payment was not confirmed within the %1$d-minute stock reservation. The bank-recheck window is %2$d hours from each payment attempt."
 msgstr ""
 
 #: includes/class-epay-paycenter-review.php:184

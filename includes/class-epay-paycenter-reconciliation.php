@@ -34,7 +34,7 @@ final class Epay_Paycenter_Reconciliation {
 	const DEFAULT_RUN_BUDGET     = 45;
 
 	/**
-	 * Absolute query checkpoints measured from ticket creation, ending at 48h.
+	 * Early query checkpoints; longer windows continue daily after 48h.
 	 *
 	 * @var int[]
 	 */
@@ -722,7 +722,7 @@ final class Epay_Paycenter_Reconciliation {
 			throw new RuntimeException( 'Could not persist an ePay follow-up result.' );
 		}
 		if ( 'unresolved' === $state ) {
-			Epay_Paycenter_Review::record( 'unresolved', (int) $row['order_id'], (string) $row['merchant_reference'], 1 === $attempts && $now - $created >= 2 * DAY_IN_SECONDS );
+			Epay_Paycenter_Review::record( 'unresolved', (int) $row['order_id'], (string) $row['merchant_reference'], 1 === $attempts && $now - $created >= self::window_hours() * HOUR_IN_SECONDS );
 		}
 	}
 
@@ -1021,7 +1021,7 @@ final class Epay_Paycenter_Reconciliation {
 	}
 
 	/**
-	 * Four-hour fallback releases stock while bank polling continues.
+	 * Release stock independently of the bank-recheck window.
 	 *
 	 * @param int $order_id Order id.
 	 */
@@ -1052,7 +1052,15 @@ final class Epay_Paycenter_Reconciliation {
 		if ( ! $order instanceof WC_Order || $order->is_paid() || ! $order->has_status( array( 'pending', 'on-hold' ) ) ) {
 			return;
 		}
-		$order->update_status( 'cancelled', __( 'ePay payment was not confirmed within the four-hour stock reservation. Bank follow-up continues for 48 hours.', 'resilient-gateway-for-epay-paycenter' ) );
+		$order->update_status(
+			'cancelled',
+			sprintf(
+				/* translators: 1: stock reservation in minutes, 2: bank-recheck window in hours. */
+				__( 'ePay payment was not confirmed within the %1$d-minute stock reservation. The bank-recheck window is %2$d hours from each payment attempt.', 'resilient-gateway-for-epay-paycenter' ),
+				self::stock_hold_minutes(),
+				self::window_hours()
+			)
+		);
 		$order->save();
 	}
 
@@ -1198,20 +1206,45 @@ final class Epay_Paycenter_Reconciliation {
 	}
 
 	/**
-	 * Select the first future checkpoint within the 48-hour polling window.
+	 * Read bounded hours; absent or malformed stored settings use the upgrade default.
+	 *
+	 * @return int Hours from attempt creation.
+	 */
+	public static function window_hours(): int {
+		$settings = self::settings();
+		$hours    = filter_var(
+			$settings['follow_up_window_hours'] ?? 48,
+			FILTER_VALIDATE_INT,
+			array(
+				'options' => array(
+					'min_range' => 1,
+					'max_range' => 168,
+				),
+			)
+		);
+		return false === $hours ? 48 : (int) $hours;
+	}
+
+	/**
+	 * Select the next checkpoint, including the configured endpoint exactly once.
 	 *
 	 * @param int $created Attempt creation timestamp.
 	 * @param int $now Current timestamp.
 	 * @return string|null
 	 */
 	private static function next_checkpoint( int $created, int $now ) {
-		$age = max( 0, $now - $created );
+		$age    = max( 0, $now - $created );
+		$window = self::window_hours() * HOUR_IN_SECONDS;
+		if ( $age >= $window ) {
+			return null;
+		}
 		foreach ( self::$checkpoints as $offset ) {
-			if ( $offset > $age ) {
+			if ( $offset > $age && $offset < $window ) {
 				return gmdate( 'Y-m-d H:i:s', $created + $offset );
 			}
 		}
-		return null;
+		$next = $age >= 2 * DAY_IN_SECONDS ? min( $window, ( intdiv( $age, DAY_IN_SECONDS ) + 1 ) * DAY_IN_SECONDS ) : $window;
+		return gmdate( 'Y-m-d H:i:s', $created + $next );
 	}
 
 	/**

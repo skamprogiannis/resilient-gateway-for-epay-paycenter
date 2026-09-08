@@ -68,7 +68,7 @@ jobs:
         run: |
           docker compose -f compose.test.yml run --rm wpcli wp wc hpos sync
           docker compose -f compose.test.yml run --rm wpcli wp option update woocommerce_custom_orders_table_enabled yes
-          npm run test:integration -- --grep @review
+          npm run test:integration -- --grep '@review|@recovery-settings|@recovery-window'
       - if: always()
         uses: actions/upload-artifact@v7.0.1
         with:

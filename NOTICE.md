@@ -29,6 +29,8 @@ attempts and adds credential-bound recovery-run status and Greek labels.
 
 On 2026-09-08 the fork contributors preserved valid classic-checkout installment
 selections across payment-section refreshes and added a deterministic regression.
+The same date's recovery update adds a bounded, configurable recheck window
+and combines verification and configuration in one settings card.
 
 ## Trademarks and services
 

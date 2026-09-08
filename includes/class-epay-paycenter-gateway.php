@@ -283,7 +283,18 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 				'type'        => 'checkbox',
 				'label'       => __( 'Use ePay FOLLOW_UP to reconcile missing callbacks', 'resilient-gateway-for-epay-paycenter' ),
 				'default'     => 'no',
-				'description' => __( 'First verify the channel with a known successful order in the diagnostic card above. Once enabled, the plugin checks unresolved attempts for up to 48 hours and marks an order paid only after an exact approved bank response.', 'resilient-gateway-for-epay-paycenter' ),
+				'description' => __( 'Verify the channel above, then enable recovery and save. Only an exact approved bank response can mark an order paid.', 'resilient-gateway-for-epay-paycenter' ),
+			),
+			'follow_up_window_hours'      => array(
+				'title'             => __( 'Recheck payments for (hours)', 'resilient-gateway-for-epay-paycenter' ),
+				'type'              => 'number',
+				'default'           => '48',
+				'custom_attributes' => array(
+					'min'  => '1',
+					'max'  => '168',
+					'step' => '1',
+				),
+				'description'       => __( '1–168 hours from each payment attempt (default: 48). Applies to new and ongoing checks, not expired or reviewed cases. Technical failures may receive up to two extra hourly retries; WordPress scheduling can delay checks. Stock reservation is separate.', 'resilient-gateway-for-epay-paycenter' ),
 			),
 			'follow_up_hold_minutes'      => array(
 				'title'             => __( 'ePay stock reservation', 'resilient-gateway-for-epay-paycenter' ),
@@ -294,7 +305,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 					'max'  => 1440,
 					'step' => 1,
 				),
-				'description'       => __( 'Minutes to reserve stock for unpaid ePay orders (default: 240 / four hours). Follow-up checks continue for 48 hours even after stock is released.', 'resilient-gateway-for-epay-paycenter' ),
+				'description'       => __( 'Minutes to reserve stock for unpaid ePay orders (default: 240 / four hours). Changing the recheck duration does not extend stock reservation.', 'resilient-gateway-for-epay-paycenter' ),
 			),
 			'debug'                       => array(
 				'title'   => __( 'Logging', 'resilient-gateway-for-epay-paycenter' ),
@@ -353,6 +364,10 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 						if ( empty( $section_fields ) ) {
 							continue;
 						}
+						if ( 'reconciliation' === $section_key ) {
+							$this->render_follow_up_card( $section_fields );
+							continue;
+						}
 						$section_id = 'epay-section-' . sanitize_html_class( $section_key );
 						?>
 						<section class="epay-card" aria-labelledby="<?php echo esc_attr( $section_id . '-title' ); ?>">
@@ -395,7 +410,6 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 						// directly under the credentials they complement.
 						if ( 'credentials' === $section_key ) {
 							$this->render_bank_integration_card();
-							$this->render_follow_up_diagnostics_card();
 							$this->render_callback_diagnostics_card();
 						}
 						?>
@@ -496,7 +510,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 				'label'  => __( 'Missing-response recovery', 'resilient-gateway-for-epay-paycenter' ),
 				'icon'   => 'backup',
 				'intro'  => __( 'These controls recover payments that ePay later resolves through DIAS but cannot send back through the normal callback flow.', 'resilient-gateway-for-epay-paycenter' ),
-				'fields' => array( 'follow_up_enabled', 'follow_up_hold_minutes' ),
+				'fields' => array( 'follow_up_enabled', 'follow_up_window_hours', 'follow_up_hold_minutes' ),
 			),
 			'advanced'       => array(
 				'label'  => __( 'Advanced & logging', 'resilient-gateway-for-epay-paycenter' ),
@@ -745,6 +759,31 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		}
 
 		return Epay_Paycenter_Credentials::for_storage( $value );
+	}
+
+	/**
+	 * Reject invalid durations with a settings error and retain valid stored hours.
+	 *
+	 * @param string $key Settings field key.
+	 * @param string $value Submitted hours.
+	 * @return string Valid whole hours.
+	 */
+	public function validate_follow_up_window_hours_field( $key, $value ) {
+		$hours = filter_var(
+			$value,
+			FILTER_VALIDATE_INT,
+			array(
+				'options' => array(
+					'min_range' => 1,
+					'max_range' => 168,
+				),
+			)
+		);
+		if ( false === $hours ) {
+			WC_Admin_Settings::add_error( __( 'Enter a whole number of hours from 1 to 168.', 'resilient-gateway-for-epay-paycenter' ) );
+			return (string) Epay_Paycenter_Reconciliation::window_hours();
+		}
+		return (string) $hours;
 	}
 
 	/**
@@ -1840,13 +1879,14 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	}
 
 	/**
-	 * Render the read-only bank channel detector. A successful test stores
+	 * Render channel verification and recovery settings together. A successful test stores
 	 * only the verified channel/fingerprint; enabling recovery remains a
 	 * separate settings save.
 	 *
+	 * @param array<string,array<string,mixed>> $fields WooCommerce settings fields.
 	 * @return void
 	 */
-	private function render_follow_up_diagnostics_card() {
+	private function render_follow_up_card( array $fields ): void {
 		$channel = Epay_Paycenter_Reconciliation::verified_channel();
 		$active  = Epay_Paycenter_Reconciliation::is_enabled();
 		if ( $active ) {
@@ -1881,6 +1921,13 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 					</button>
 				</div>
 				<div class="epay-waftest__result" id="epay-follow-up-result" role="status" aria-live="polite"></div>
+				<table class="form-table" role="presentation">
+					<?php
+					// WooCommerce escapes the trusted field definitions and stored values.
+					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+					echo $this->generate_settings_html( $fields, false );
+					?>
+				</table>
 			</div>
 		</section>
 		<?php

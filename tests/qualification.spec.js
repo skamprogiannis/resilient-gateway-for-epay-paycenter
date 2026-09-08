@@ -119,6 +119,165 @@ async function sendCallback(request, path, payload) {
   return request.post(path, { form: payload, maxRedirects: 0 });
 }
 
+const GATEWAY_SETTINGS = '/wp-admin/admin.php?page=wc-settings&tab=checkout&section=epay_paycenter';
+
+function checkpointHours(row) {
+  return (Date.parse(row.next_check_at + 'Z') - Date.parse(row.created_at + 'Z')) / 3600000;
+}
+
+async function runWindowWorker(request, order) {
+  await setFixture(request, 'follow-up/isolate-queue', { order_ids: [order.order_id] });
+  await setFixture(request, `follow-up/prioritise/${order.order_id}`, {});
+  await setFixture(request, 'follow-up/worker', {});
+  return readOrder(request, order.order_id);
+}
+
+async function saveRecoveryWindow(page, value) {
+  const field = page.locator('#woocommerce_epay_paycenter_follow_up_window_hours');
+  const form = await field.evaluate(input => Object.fromEntries(new FormData(input.form)));
+  form.woocommerce_epay_paycenter_follow_up_window_hours = value;
+  form.save = 'Save changes';
+  const response = await page.request.post(GATEWAY_SETTINGS, { form });
+  expect(response.ok()).toBe(true);
+  await page.goto(GATEWAY_SETTINGS);
+  return response.text();
+}
+
+test('@recovery-settings verifies, configures and saves recovery in one card', async ({ page, request }) => {
+  const order = await createOrder(request);
+  await issueAttempt(request, order);
+  await loginAsLocalAdmin(page);
+  await page.goto(GATEWAY_SETTINGS);
+  const card = page.locator('section.epay-card').filter({ has: page.getByRole('heading', { name: 'Missing-response recovery', exact: true }) });
+  await expect(card).toHaveCount(1);
+  await expect(card.locator('#epay-follow-up-order')).toBeVisible();
+  const hours = card.locator('#woocommerce_epay_paycenter_follow_up_window_hours');
+  await expect(hours).toHaveValue('48');
+  await card.locator('#epay-follow-up-order').fill(String(order.order_id));
+  await card.locator('#epay-follow-up-test').click();
+  await expect(card.locator('#epay-follow-up-result')).toContainText('Channel verified');
+  await card.locator('#woocommerce_epay_paycenter_follow_up_enabled').check();
+  await saveRecoveryWindow(page, '84');
+  await expect(hours).toHaveValue('84');
+  await expect(card.locator('#epay-follow-up-status')).toHaveText('Active');
+  await expect(card.locator('#woocommerce_epay_paycenter_follow_up_hold_minutes')).toHaveValue('240');
+  for (const invalid of ['0', '169', '-1', '1.5', 'abc', '']) {
+    const response = await saveRecoveryWindow(page, invalid);
+    await expect(hours).toHaveValue('84');
+    expect(response.includes('Enter a whole number of hours from 1 to 168.'), `Validation message for ${JSON.stringify(invalid)}`).toBe(true);
+  }
+  for (const valid of ['1', '168', '48']) {
+    await saveRecoveryWindow(page, valid);
+    await expect(hours).toHaveValue(valid);
+  }
+  expect((await readOrder(request, order.order_id)).status).toBe('pending');
+  await page.setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification', 'X-Epay-Test-Locale': 'el' });
+  await page.reload();
+  const translated = page.locator('section.epay-card').filter({ has: page.locator('#epay-follow-up-order') });
+  await expect(translated).toContainText('Διάρκεια επανελέγχων (ώρες)');
+  for (const [name, width] of [['desktop', 1280], ['mobile', 390]]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await translated.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    if (process.env.EPAY_TEST_CAPTURE_UI) await translated.screenshot({ path: test.info().outputPath(`recovery-${name}-el.png`) });
+  }
+  await page.goto('/wp-admin/plugins.php');
+  await expect(page.locator('[data-slug="resilient-gateway-for-epay-paycenter"]')).toContainText('Stephanos Kamprogiannis');
+});
+
+test('@recovery-window uses bounded creation-relative checkpoints and preserves expired cases', async ({ page, request }) => {
+  const verification = await createOrder(request);
+  await issueAttempt(request, verification);
+  await verifyAndEnableFollowUp(request, verification);
+  await loginAsLocalAdmin(page);
+  await page.goto(GATEWAY_SETTINGS);
+  let expired;
+  for (const [hours, age, expected] of [[48, 25, 48], [1, 0.5, 1], [168, 49, 72], [84, 73, 84], [84, 85, null]]) {
+    await saveRecoveryWindow(page, String(hours));
+    const order = await createOrder(request);
+    const attempt = await issueAttempt(request, order);
+    await setFixture(request, `follow-up/age-attempt/${order.order_id}`, { age_seconds: age * 3600 });
+    await setFixture(request, 'fake-follow-up', { scenario: 'not_found', channel: 'eCommerce' });
+    const result = await runWindowWorker(request, order);
+    const row = result.epay.follow_up[attempt.MerchantReference];
+    expect(result.status).toBe('pending');
+    expect(result.epay.stock_release_scheduled).toBe(true);
+    if (expected === null) {
+      expect(row.state).toBe('unresolved');
+      expect(row.next_check_at).toBeNull();
+      expired = { order, before: result };
+    } else {
+      expect(row.state).toBe('pending');
+      expect(checkpointHours(row)).toBe(expected);
+    }
+  }
+  await saveRecoveryWindow(page, '168');
+  expect(await readOrder(request, expired.order.order_id)).toEqual(expired.before);
+  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  const historical = page.locator('.epay-paycenter-review details').filter({ has: page.locator('summary', { hasText: 'Historical checks' }) });
+  await expect(historical).toContainText(expired.before.epay.merchant_reference);
+});
+
+test('@recovery-window updates ongoing work without reopening reviewed attempts and retains bounded error retries', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, 'fake-follow-up', { scenario: 'not_found', channel: 'eCommerce' });
+  await runWindowWorker(request, order);
+  await setFixture(request, `follow-up/age-attempt/${order.order_id}`, { age_seconds: 49 * 3600 });
+  await loginAsLocalAdmin(page);
+  await page.goto(GATEWAY_SETTINGS);
+  await saveRecoveryWindow(page, '168');
+  const extended = await runWindowWorker(request, order);
+  expect(checkpointHours(extended.epay.follow_up[attempt.MerchantReference])).toBe(72);
+  await saveRecoveryWindow(page, '1');
+  const expired = await runWindowWorker(request, order);
+  expect(expired.epay.follow_up[attempt.MerchantReference].state).toBe('unresolved');
+  expect(expired.status).toBe('pending');
+  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  const group = page.locator('.epay-paycenter-review details').filter({ hasText: attempt.MerchantReference });
+  await group.locator('summary').click();
+  await group.getByRole('button', { name: 'Mark reviewed' }).click();
+  await expect(page.locator('.epay-paycenter-review')).not.toContainText(attempt.MerchantReference);
+  await page.goto(GATEWAY_SETTINGS);
+  await saveRecoveryWindow(page, '168');
+  expect(await readOrder(request, order.order_id)).toEqual(expired);
+
+  const errors = await createOrder(request);
+  const errorAttempt = await issueAttempt(request, errors);
+  await setFixture(request, `follow-up/age-attempt/${errors.order_id}`, { age_seconds: 169 * 3600 });
+  await setFixture(request, 'fake-follow-up', { scenario: 'transport_error', channel: 'eCommerce' });
+  for (let count = 1; count <= 3; count++) {
+    const checked = await runWindowWorker(request, errors);
+    const row = checked.epay.follow_up[errorAttempt.MerchantReference];
+    expect(row.attempts).toBe(count);
+    expect(checked.status).toBe('pending');
+    if (count < 3) {
+      expect(row.state).toBe('query_error');
+      const delay = Date.parse(row.next_check_at + 'Z') - Date.now();
+      expect(delay).toBeGreaterThan(3500000);
+      expect(delay).toBeLessThanOrEqual(3605000);
+    } else {
+      expect(row.state).toBe('unresolved');
+      expect(row.next_check_at).toBeNull();
+    }
+  }
+});
+
+test('@recovery-window accepts a verified approval after 48 hours once, within an extended window', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await loginAsLocalAdmin(page);
+  await page.goto(GATEWAY_SETTINGS);
+  await saveRecoveryWindow(page, '84');
+  await setFixture(request, `follow-up/age-attempt/${order.order_id}`, { age_seconds: 49 * 3600 });
+  const paid = await runWindowWorker(request, order);
+  expect(paid.status).toBe('processing');
+  expect(paid.epay.follow_up[attempt.MerchantReference].state).toBe('paid');
+  await setFixture(request, 'follow-up/worker', {});
+  expect(await readOrder(request, order.order_id)).toEqual(paid);
+});
+
 test.beforeEach(async ({ request }) => {
   await setFixture(request, 'legacy-plugin', { active: false });
   await setFixture(request, 'fake-epay-result', { result_code: '0' });
