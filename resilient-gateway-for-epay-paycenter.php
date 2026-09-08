@@ -10,7 +10,7 @@
  * Requires Plugins:  woocommerce
  * WC requires at least: 7.0
  * WC tested up to:   10.4.3
- * Author:            skamprogiannis
+ * Author:            Stephanos Kamprogiannis
  * Author URI:        https://github.com/skamprogiannis
  * Update URI:        https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter
  * License:           GPL-2.0-or-later

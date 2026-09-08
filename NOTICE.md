@@ -1,7 +1,7 @@
 # Notices and attribution
 
 Resilient Gateway for ePay Paycenter is GPL-2.0-or-later software maintained by
-skamprogiannis.
+Stephanos Kamprogiannis (skamprogiannis).
 
 ## Upstream work
 
