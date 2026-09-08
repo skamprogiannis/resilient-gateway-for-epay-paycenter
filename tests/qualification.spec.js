@@ -111,8 +111,9 @@ async function loginAsLocalAdmin(page) {
     form: { log: 'localadmin', pwd: 'localadmin123', testcookie: '1' }, maxRedirects: 0,
   });
   expect(response.status()).toBe(302);
-  await page.goto('/wp-admin/');
-  await expect(page.locator('#wpadminbar')).toBeVisible();
+  await page.goto('/wp-admin/profile.php');
+  await expect(page).toHaveURL(/\/wp-admin\/profile\.php$/);
+  await expect(page.locator('#user_login')).toHaveValue('localadmin');
 }
 
 async function sendCallback(request, path, payload) {
@@ -142,6 +143,19 @@ async function saveRecoveryWindow(page, value) {
   await page.goto(GATEWAY_SETTINGS);
   return response.text();
 }
+
+test('@admin-login prepared site requires authentication and skips WooCommerce onboarding', async ({ page }) => {
+  const anonymous = await page.request.get('/wp-admin/profile.php', { maxRedirects: 0 });
+  expect(anonymous.status()).toBe(302);
+  expect(new URL(anonymous.headers().location).pathname).toBe('/wp-login.php');
+
+  await loginAsLocalAdmin(page);
+  await page.goto('/wp-admin/');
+  await expect(page).toHaveURL(/\/wp-admin\/$/);
+  await page.goto('/wp-admin/admin.php?page=wc-admin');
+  await expect(page).toHaveURL(url => url.searchParams.get('page') === 'wc-admin' && !url.searchParams.has('path'));
+  await expect(page.getByRole('heading', { name: 'Welcome to Woo!', exact: true })).toHaveCount(0);
+});
 
 test('@about settings identify the current maintainer and retain trademark notices', async ({ page }) => {
   await loginAsLocalAdmin(page);

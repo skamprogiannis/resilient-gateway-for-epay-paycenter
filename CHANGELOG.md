@@ -3,6 +3,12 @@
 Notable changes to Resilient Gateway for ePay Paycenter are recorded here.
 Release artifacts and checksums belong in GitHub Releases.
 
+## Unreleased
+
+- Skip WooCommerce onboarding during synthetic test setup and verify admin
+  authentication through the profile page rather than toolbar visibility.
+  Cover first-login navigation and rejection of anonymous admin access.
+
 ## 2.1.1 — 2026-09-08
 
 - Correct the About card's maintainer credit in English and Greek, retaining
@@ -19,8 +25,6 @@ Release artifacts and checksums belong in GitHub Releases.
 - Combine channel verification and recovery settings in one card, with Greek
   translations and independent stock-reservation guidance.
 - Display the author as Stephanos Kamprogiannis.
-
-## Unreleased
 
 ## 2.0.2 — 2026-09-08
 

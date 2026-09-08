@@ -27,6 +27,9 @@ update_option( 'woocommerce_hold_stock_minutes', '60' );
 update_option( 'woocommerce_manage_stock', 'yes' );
 update_option( 'woocommerce_coming_soon', 'no' );
 update_option( 'woocommerce_store_pages_only', 'no' );
+// Fresh installs must not redirect the first admin login to full-screen onboarding.
+update_option( 'woocommerce_onboarding_profile', array( 'skipped' => true ) );
+delete_transient( '_wc_activation_redirect' );
 update_option( 'woocommerce_checkout_order_received_endpoint', 'order-received' );
 update_option( 'woocommerce_checkout_pay_endpoint', 'order-pay' );
 WC_Install::create_pages();
