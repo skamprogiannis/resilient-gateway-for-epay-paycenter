@@ -3,6 +3,18 @@
 Notable changes to Resilient Gateway for ePay Paycenter are recorded here.
 Release artifacts and checksums belong in GitHub Releases.
 
+## 2.1.0 — 2026-09-08
+
+- Preserve valid classic-checkout installment choices across payment-section
+  refreshes; warn when a changed limit requires one-time payment. Cover the CI
+  race with a deterministic browser regression.
+- Make the recovery window configurable from 1–168 hours, retaining 48 hours
+  by default. Apply changes to new and ongoing attempts without reopening
+  expired or reviewed cases; retain bounded technical-error retries.
+- Combine channel verification and recovery settings in one card, with Greek
+  translations and independent stock-reservation guidance.
+- Display the author as Stephanos Kamprogiannis.
+
 ## Unreleased
 
 ## 2.0.2 — 2026-09-08

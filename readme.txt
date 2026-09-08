@@ -4,7 +4,7 @@ Tags: woocommerce, payment gateway, epay, iris, greece
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.0.2
+Stable tag: 2.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,7 +45,7 @@ plugin does not provide a Paycenter account or shared test credentials.
 
 = Independent project and trademarks =
 
-This is independent GPL-2.0-or-later software maintained by skamprogiannis and
+This is independent GPL-2.0-or-later software maintained by Stephanos Kamprogiannis and
 based on the WebHosting4U plugin. It is not affiliated with, endorsed by, or
 sponsored by Piraeus Bank S.A., Euronet Merchant Services, WebHosting4U,
 WooCommerce, or Automattic Inc.
@@ -245,6 +245,13 @@ Do not open a public issue. Use GitHub private vulnerability reporting:
 https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/advisories/new
 
 == Changelog ==
+
+= 2.1.0 =
+
+* Preserve valid installment selections across classic-checkout refreshes and explain unavailable choices.
+* Configure bank rechecks from 1–168 hours (default: 48), affecting new and ongoing attempts without reopening expired or reviewed cases. Existing limited technical-error retries remain.
+* Combine verification and recovery settings in one translated card. Stock reservation remains independent.
+* Display the author as Stephanos Kamprogiannis.
 
 = 2.0.2 =
 * Separate payment discrepancies, technical problems, and unconfirmed attempts; retain Historical checks and review acknowledgements.
