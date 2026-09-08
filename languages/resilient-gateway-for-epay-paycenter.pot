@@ -2,7 +2,7 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: Resilient Gateway for ePay Paycenter 2.1.0\n"
+"Project-Id-Version: Resilient Gateway for ePay Paycenter 2.1.1\n"
 "Report-Msgid-Bugs-To: https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -306,7 +306,7 @@ msgid "Implements the official ePay Paycenter Redirection v2.9 specification: SO
 msgstr ""
 
 #: includes/class-epay-paycenter-gateway.php:465
-msgid "Published under GPL-2.0-or-later by WebHosting4U. \"ePay\", \"Paycenter\" and the Piraeus Bank payment mark are trademarks of Piraeus Bank S.A. / Euronet Merchant Services."
+msgid "Maintained by Stephanos Kamprogiannis. Licensed under GPL-2.0-or-later. \"ePay\", \"Paycenter\" and the Piraeus Bank payment mark are trademarks of Piraeus Bank S.A. / Euronet Merchant Services."
 msgstr ""
 
 #: includes/class-epay-paycenter-gateway.php:488

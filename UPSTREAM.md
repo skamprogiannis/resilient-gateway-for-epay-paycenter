@@ -32,3 +32,6 @@ payment protocol and import remain unchanged.
 Release 2.1.0 (2026-09-08) preserves installment choices across checkout
 refreshes, makes the recovery window configurable, and combines recovery
 settings and verification. The upstream import remains unchanged.
+
+Release 2.1.1 (2026-09-08) corrects the About card's maintainer credit in English
+and Greek. Upstream attribution and the imported source remain unchanged.

@@ -3,6 +3,11 @@
 Notable changes to Resilient Gateway for ePay Paycenter are recorded here.
 Release artifacts and checksums belong in GitHub Releases.
 
+## 2.1.1 — 2026-09-08
+
+- Correct the About card's maintainer credit in English and Greek, retaining
+  upstream attribution and trademark notices. Payment behavior is unchanged.
+
 ## 2.1.0 — 2026-09-08
 
 - Preserve valid classic-checkout installment choices across payment-section

@@ -9,5 +9,5 @@ return array(
 		'wp-html-entities',
 		'wp-i18n',
 	),
-	'version'      => '2.1.0',
+	'version'      => '2.1.1',
 );

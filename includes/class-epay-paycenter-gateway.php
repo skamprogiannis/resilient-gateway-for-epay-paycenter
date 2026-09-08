@@ -462,7 +462,7 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 								<?php echo esc_html__( 'Implements the official ePay Paycenter Redirection v2.9 specification: SOAP ticketing, HMAC-SHA256 response verification, HPOS and Checkout Blocks support.', 'resilient-gateway-for-epay-paycenter' ); ?>
 							</p>
 							<p class="epay-footnote">
-								<?php echo esc_html__( 'Published under GPL-2.0-or-later by WebHosting4U. "ePay", "Paycenter" and the Piraeus Bank payment mark are trademarks of Piraeus Bank S.A. / Euronet Merchant Services.', 'resilient-gateway-for-epay-paycenter' ); ?>
+								<?php echo esc_html__( 'Maintained by Stephanos Kamprogiannis. Licensed under GPL-2.0-or-later. "ePay", "Paycenter" and the Piraeus Bank payment mark are trademarks of Piraeus Bank S.A. / Euronet Merchant Services.', 'resilient-gateway-for-epay-paycenter' ); ?>
 							</p>
 						</div>
 					</section>

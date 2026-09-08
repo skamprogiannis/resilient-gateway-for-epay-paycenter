@@ -143,6 +143,27 @@ async function saveRecoveryWindow(page, value) {
   return response.text();
 }
 
+test('@about settings identify the current maintainer and retain trademark notices', async ({ page }) => {
+  await loginAsLocalAdmin(page);
+  for (const [locale, attribution] of [
+    ['en_US', 'Maintained by Stephanos Kamprogiannis. Licensed under GPL-2.0-or-later.'],
+    ['el', 'Συντηρείται από τον Stephanos Kamprogiannis. Διατίθεται με άδεια GPL-2.0-or-later.'],
+  ]) {
+    await page.setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification', 'X-Epay-Test-Locale': locale });
+    await page.goto(GATEWAY_SETTINGS);
+    const about = page.getByRole('region', { name: locale === 'el' ? 'Σχετικά με το πρόσθετο' : 'About this plugin', exact: true });
+    await expect(about).toContainText(attribution);
+    await expect(about).not.toContainText('WebHosting4U');
+    await expect(about).toContainText('Euronet Merchant Services');
+    await expect(about).toContainText(locale === 'el' ? 'εμπορικά σήματα' : 'trademarks');
+    for (const [name, width] of [['desktop', 1280], ['mobile', 390]]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await about.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      if (process.env.EPAY_TEST_CAPTURE_UI) await about.screenshot({ path: test.info().outputPath(`about-${name}-${locale}.png`) });
+    }
+  }
+});
+
 test('@recovery-settings verifies, configures and saves recovery in one card', async ({ page, request }) => {
   const order = await createOrder(request);
   await issueAttempt(request, order);
@@ -313,7 +334,7 @@ test('@smoke downstream and local Paycenter boundary are active', async ({ reque
   expect(health).toMatchObject({
     local_only: true,
     fake_epay_available: true,
-    epay_version: process.env.EPAY_TEST_PLUGIN_VERSION || '2.1.0',
+    epay_version: process.env.EPAY_TEST_PLUGIN_VERSION || '2.1.1',
     epay_enabled: true,
     epay_mode: 'test',
     epay_password_storage: 'md5-digest',

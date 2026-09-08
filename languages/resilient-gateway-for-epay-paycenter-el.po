@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Resilient Gateway for ePay Paycenter 2.1.0\n"
+"Project-Id-Version: Resilient Gateway for ePay Paycenter 2.1.1\n"
 "Report-Msgid-Bugs-To: https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/issues\n"
 "POT-Creation-Date: 2026-09-08T07:59:51+00:00\n"
 "PO-Revision-Date: 2026-09-08 00:00+0000\n"
@@ -305,8 +305,8 @@ msgid "Implements the official ePay Paycenter Redirection v2.9 specification: SO
 msgstr "Υλοποιεί την επίσημη προδιαγραφή ePay Paycenter Redirection v2.9: ticketing μέσω SOAP, επαλήθευση απόκρισης με HMAC-SHA256, υποστήριξη HPOS και Checkout Blocks."
 
 #: includes/class-epay-paycenter-gateway.php:465
-msgid "Published under GPL-2.0-or-later by WebHosting4U. \"ePay\", \"Paycenter\" and the Piraeus Bank payment mark are trademarks of Piraeus Bank S.A. / Euronet Merchant Services."
-msgstr "Δημοσιεύεται με άδεια GPL-2.0-or-later από τη WebHosting4U. Τα σήματα «ePay», «Paycenter» και το σήμα πληρωμής της Τράπεζας Πειραιώς είναι εμπορικά σήματα της Τράπεζας Πειραιώς Α.Ε. / Euronet Merchant Services."
+msgid "Maintained by Stephanos Kamprogiannis. Licensed under GPL-2.0-or-later. \"ePay\", \"Paycenter\" and the Piraeus Bank payment mark are trademarks of Piraeus Bank S.A. / Euronet Merchant Services."
+msgstr "Συντηρείται από τον Stephanos Kamprogiannis. Διατίθεται με άδεια GPL-2.0-or-later. Τα σήματα «ePay», «Paycenter» και το σήμα πληρωμής της Τράπεζας Πειραιώς είναι εμπορικά σήματα της Τράπεζας Πειραιώς Α.Ε. / Euronet Merchant Services."
 
 #: includes/class-epay-paycenter-gateway.php:488
 msgid "General"
