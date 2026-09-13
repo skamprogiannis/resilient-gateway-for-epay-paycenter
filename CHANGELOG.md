@@ -3,7 +3,7 @@
 Notable changes to Resilient Gateway for ePay Paycenter are recorded here.
 Release artifacts and checksums belong in GitHub Releases.
 
-## Unreleased
+## 2.2.0 — 2026-09-13
 
 - Replace the order-list warning panel with a native WooCommerce review page,
   category filters, search, pagination and an Orders navigation count.
@@ -14,7 +14,6 @@ Release artifacts and checksums belong in GitHub Releases.
   known methods; never substitute an IRIS callback ID or guess a search URL.
 - Preserve payment decisions, recovery timing, historical classification and
   existing acknowledgements. Include English and Greek administration copy.
-
 - Skip WooCommerce onboarding during synthetic test setup and verify admin
   authentication through the profile page rather than toolbar visibility.
   Cover first-login navigation and rejection of anonymous admin access.

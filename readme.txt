@@ -4,7 +4,7 @@ Tags: woocommerce, payment gateway, epay, iris, greece
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.1.1
+Stable tag: 2.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -260,6 +260,14 @@ Do not open a public issue. Use GitHub private vulnerability reporting:
 https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/advisories/new
 
 == Changelog ==
+
+= 2.2.0 =
+
+* Replace the warning panel with a native WooCommerce review page, searchable categories, pagination and an Orders review count.
+* Mark cases reviewed without a page reload, with bulk acknowledgement for unconfirmed and historical cases only.
+* Show ePay references, attempt history and recorded bank evidence in legacy and HPOS order editors. Link to AdminTool transactions only when compatible identifiers are available.
+* Include responsive English and Greek controls. Payment decisions, recovery timing and existing review acknowledgements are unchanged.
+* Fix synthetic test login checks when WooCommerce onboarding hides the admin toolbar.
 
 = 2.1.1 =
 
