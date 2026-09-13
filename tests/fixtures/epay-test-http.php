@@ -55,7 +55,9 @@ function epay_test_fake_follow_up_response( array $fields, $scenario ) {
 	$transaction_id     = '987654321';
 	$transaction_at     = '2020-01-02T12:34:56';
 
-	if ( 'not_found' === $scenario ) {
+	if ( 'paid_unknown' === $scenario ) {
+		$payment_method = '';
+	} elseif ( 'not_found' === $scenario ) {
 		$result_code        = '1010';
 		$result_description = 'Wrong original transaction';
 		$status_flag        = '';

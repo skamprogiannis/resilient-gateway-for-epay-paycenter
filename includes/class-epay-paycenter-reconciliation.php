@@ -49,7 +49,6 @@ final class Epay_Paycenter_Reconciliation {
 			}
 		);
 		add_action( self::STOCK_RELEASE_HOOK, array( __CLASS__, 'release_stock' ) );
-		Epay_Paycenter_Review::init( array( __CLASS__, 'status' ) );
 		add_action( 'wp_ajax_epay_paycenter_follow_up_test', array( __CLASS__, 'ajax_test_channel' ) );
 		add_action(
 			'woocommerce_update_options_payment_gateways_' . EPAY_PAYCENTER_GATEWAY_ID,

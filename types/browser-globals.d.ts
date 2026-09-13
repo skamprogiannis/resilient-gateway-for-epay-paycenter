@@ -64,7 +64,22 @@ declare interface EpayVirtualElement {
 declare type EpayRenderable = EpayVirtualElement | EpayRenderable[] | boolean | null | number | string;
 declare type EpayRenderableFactory = () => EpayRenderable;
 
+declare interface EpayReviewResponse {
+  success: true;
+  data: {
+    saved: string[];
+    errors: Record<string, string>;
+    counts: Record<string, number> | null;
+    total: number | null;
+  };
+}
+
 declare interface Window {
+  epayPaycenterReview?: {
+    ajaxUrl: string;
+    nonce: string;
+    strings: Record<'saving' | 'saved' | 'failed' | 'partial' | 'select' | 'copied' | 'copyFailed' | 'countsFailed' | 'unavailable' | 'unreviewed' | 'none', string>;
+  };
   jQuery: (element: HTMLElement) => { on: (events: string, handler: () => void) => void };
   epayPaycenterCheckout: { installmentsChanged: string };
   epayPaycenterAdmin?: EpayAdminConfig;

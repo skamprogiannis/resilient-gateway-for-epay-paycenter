@@ -200,11 +200,26 @@ After an administrator verifies and enables `FOLLOW_UP`, the plugin performs
 bounded checks for up to 48 hours. Only an exact approved bank result calls
 WooCommerce's normal `payment_complete()` path. Late, detached, unresolved,
 locally unpersisted, or possibly duplicated payments produce a review case.
-The order-screen panel separates confirmed payment discrepancies, technical
-check problems, unconfirmed attempts, and Historical checks. It also shows
-queued attempts and the last recovery run. An empty review queue is not proof
-that all payments were checked. Mark reviewed records acknowledgement without
-changing payment or order data.
+WooCommerce → ePay reviews separates payment discrepancies, technical check
+problems, unconfirmed attempts, and Historical checks. Search by order number
+or MerchantReference; the Orders navigation links to the unreviewed case count.
+Recovery status and the last worker run are available on the review page and
+gateway settings. An empty queue does not prove that every payment was checked.
+
+Mark reviewed saves an acknowledgement without reloading the page or changing
+payment, stock, recovery, or order data. Bulk review is limited to explicitly
+selected unconfirmed and historical cases. Discrepancies and technical problems
+require individual review. Saved cases remain in Reviewed cases. The review
+page also supports normal form submission when JavaScript is unavailable.
+
+Each order's ePay payment panel shows its latest attempt, expandable earlier
+references, and locally recorded bank evidence. Copy reference works without
+saving the order. View transaction is available only for a known payment method
+and an appropriate stored AdminTool transaction ID. IRIS callback IDs are not
+AdminTool IDs; a compatible FOLLOW_UP record is needed for an IRIS detail link.
+Otherwise, copy the reference into AdminTool's search. Open AdminTool does not
+pre-fill that search, and sign-in may be required. Opening these panels makes
+no bank requests.
 
 = How long is stock reserved? =
 

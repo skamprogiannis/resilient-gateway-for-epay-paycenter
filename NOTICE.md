@@ -34,6 +34,10 @@ and combines verification and configuration in one settings card.
 The About card's maintainer credit was corrected on 2026-09-08; upstream
 attribution and trademark notices are retained.
 
+On 2026-09-11 the fork contributors added native review navigation, asynchronous
+and routine-only bulk acknowledgement, and read-only order evidence panels.
+These administrative changes do not alter the payment protocol or recovery decisions.
+
 ## Trademarks and services
 
 “ePay”, “Paycenter”, and “Piraeus Bank” are trademarks of Piraeus Bank S.A.

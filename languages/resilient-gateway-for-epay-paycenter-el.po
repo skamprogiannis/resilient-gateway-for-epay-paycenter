@@ -1074,3 +1074,186 @@ msgstr "Συνέχεια στην πληρωμή"
 #: templates/redirect-form.php:33
 msgid "Cancel and return to checkout"
 msgstr "Ακύρωση και επιστροφή στο ταμείο"
+
+msgid "This case is no longer available. Refresh the list."
+msgstr "Αυτή η περίπτωση δεν είναι πλέον διαθέσιμη. Ανανεώστε τη λίστα."
+
+msgid "Review this case individually."
+msgstr "Ελέγξτε αυτή την περίπτωση μεμονωμένα."
+
+msgid "ePay reviews"
+msgstr "Έλεγχοι ePay"
+
+msgid "All unreviewed"
+msgstr "Όλοι οι εκκρεμείς έλεγχοι"
+
+msgid "Saving…"
+msgstr "Αποθήκευση…"
+
+msgid "Review saved."
+msgstr "Ο έλεγχος αποθηκεύτηκε."
+
+msgid "Some reviews were not saved. Check the remaining rows and try again."
+msgstr "Ορισμένοι έλεγχοι δεν αποθηκεύτηκαν. Ελέγξτε τις γραμμές που παραμένουν και δοκιμάστε ξανά."
+
+msgid "Select unconfirmed or historical cases to review."
+msgstr "Επιλέξτε ανεπιβεβαίωτες προσπάθειες ή παλαιότερους ελέγχους."
+
+msgid "Reference copied."
+msgstr "Ο κωδικός αναφοράς αντιγράφηκε."
+
+msgid "Could not copy. Select and copy the reference manually."
+msgstr "Η αντιγραφή απέτυχε. Επιλέξτε και αντιγράψτε τον κωδικό αναφοράς χειροκίνητα."
+
+msgid "Review counts are unavailable. Refresh the page."
+msgstr "Το πλήθος των ελέγχων δεν είναι διαθέσιμο. Ανανεώστε τη σελίδα."
+
+msgid "unavailable"
+msgstr "μη διαθέσιμο"
+
+msgid "Payment review status"
+msgstr "Κατάσταση ελέγχων πληρωμών"
+
+msgid "Open ePay reviews"
+msgstr "Άνοιγμα ελέγχων ePay"
+
+msgid "Recovery status"
+msgstr "Κατάσταση ανάκτησης"
+
+msgid "Compare the evidence in AdminTool before marking a case reviewed. Reviewing does not change payments or orders."
+msgstr "Ελέγξτε τα στοιχεία στο AdminTool πριν ολοκληρώσετε τον έλεγχο. Η ολοκλήρωση ελέγχου δεν αλλάζει πληρωμές ή παραγγελίες."
+
+msgid "Order number or ePay reference"
+msgstr "Αριθμός παραγγελίας ή κωδικός αναφοράς ePay"
+
+msgid "Search cases"
+msgstr "Αναζήτηση ελέγχων"
+
+msgid "Bulk actions"
+msgstr "Μαζικές ενέργειες"
+
+msgid "Apply"
+msgstr "Εφαρμογή"
+
+msgid "Bulk review is available only for unconfirmed and historical cases."
+msgstr "Η μαζική ολοκλήρωση ελέγχου είναι διαθέσιμη μόνο για ανεπιβεβαίωτες προσπάθειες και παλαιότερους ελέγχους."
+
+msgid "Payment review cases"
+msgstr "Περιπτώσεις ελέγχου πληρωμών"
+
+msgid "Select eligible cases on this page"
+msgstr "Επιλογή επιλέξιμων περιπτώσεων σε αυτή τη σελίδα"
+
+msgid "Order / reference"
+msgstr "Παραγγελία / κωδικός αναφοράς"
+
+msgid "Reason for review"
+msgstr "Λόγος ελέγχου"
+
+msgid "Review"
+msgstr "Έλεγχος"
+
+msgid "No cases on this page."
+msgstr "Δεν υπάρχουν περιπτώσεις σε αυτή τη σελίδα."
+
+msgid "Refresh list"
+msgstr "Ανανέωση λίστας"
+
+msgid "cases"
+msgstr "περιπτώσεις"
+
+msgid "Previous page"
+msgstr "Προηγούμενη σελίδα"
+
+msgid "Next page"
+msgstr "Επόμενη σελίδα"
+
+msgid "Select %s"
+msgstr "Επιλογή %s"
+
+msgid "Order unavailable"
+msgstr "Η παραγγελία δεν είναι διαθέσιμη"
+
+msgid "Open AdminTool"
+msgstr "Άνοιγμα AdminTool"
+
+msgid "Reference unavailable"
+msgstr "Ο κωδικός αναφοράς δεν είναι διαθέσιμος"
+
+msgid "Copy reference"
+msgstr "Αντιγραφή κωδικού"
+
+msgid "Invalid review selection."
+msgstr "Μη έγκυρη επιλογή ελέγχων."
+
+msgid "ePay payment"
+msgstr "Πληρωμή ePay"
+
+msgid "No ePay attempts recorded for this order."
+msgstr "Δεν έχουν καταγραφεί προσπάθειες ePay για αυτή την παραγγελία."
+
+msgid "Stored payment evidence, not a live bank check. AdminTool may require sign-in."
+msgstr "Αποθηκευμένα στοιχεία πληρωμής, όχι ζωντανός έλεγχος τράπεζας. Το AdminTool ενδέχεται να απαιτεί σύνδεση."
+
+msgid "Earlier attempts"
+msgstr "Προηγούμενες προσπάθειες"
+
+msgid "Not recorded"
+msgstr "Δεν έχει καταγραφεί"
+
+msgid "Recorded paid reference"
+msgstr "Κωδικός αναφοράς καταγεγραμμένης πληρωμής"
+
+msgid "Attempt issued (UTC)"
+msgstr "Έναρξη προσπάθειας (UTC)"
+
+msgid "Attempt amount"
+msgstr "Ποσό προσπάθειας"
+
+msgid "Payment method"
+msgstr "Μέθοδος πληρωμής"
+
+msgid "Card"
+msgstr "Κάρτα"
+
+msgid "Recorded bank response"
+msgstr "Καταγεγραμμένη απάντηση τράπεζας"
+
+msgid "Recovery state"
+msgstr "Κατάσταση ανάκτησης"
+
+msgid "Last bank check (UTC)"
+msgstr "Τελευταίος έλεγχος τράπεζας (UTC)"
+
+msgid "View transaction"
+msgstr "Προβολή συναλλαγής"
+
+msgid "Copy the reference and paste it into AdminTool’s transaction search."
+msgstr "Αντιγράψτε τον κωδικό αναφοράς και επικολλήστε τον στην αναζήτηση συναλλαγών του AdminTool."
+
+msgid "Payment reviews"
+msgstr "Έλεγχοι πληρωμών"
+
+msgid "Not scheduled"
+msgstr "Δεν έχει προγραμματιστεί"
+
+msgid "Awaiting bank result"
+msgstr "Αναμονή αποτελέσματος τράπεζας"
+
+msgid "Check problem"
+msgstr "Πρόβλημα ελέγχου"
+
+msgid "No final bank result"
+msgstr "Χωρίς τελικό αποτέλεσμα τράπεζας"
+
+msgid "Bank confirmed payment"
+msgstr "Η τράπεζα επιβεβαίωσε την πληρωμή"
+
+msgid "Bank declined payment"
+msgstr "Η τράπεζα απέρριψε την πληρωμή"
+
+msgid "Payment recorded locally"
+msgstr "Η πληρωμή καταγράφηκε τοπικά"
+
+msgid "Review category"
+msgstr "Κατηγορία ελέγχου"

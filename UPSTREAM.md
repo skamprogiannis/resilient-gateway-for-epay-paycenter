@@ -35,3 +35,7 @@ settings and verification. The upstream import remains unchanged.
 
 Release 2.1.1 (2026-09-08) corrects the About card's maintainer credit in English
 and Greek. Upstream attribution and the imported source remain unchanged.
+
+Unreleased work dated 2026-09-11 adds native WooCommerce review and order-evidence
+interfaces. This is maintained-fork administration work; the upstream import,
+callback processing and bank recovery decisions remain unchanged.

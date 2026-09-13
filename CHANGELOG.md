@@ -5,6 +5,16 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Replace the order-list warning panel with a native WooCommerce review page,
+  category filters, search, pagination and an Orders navigation count.
+- Add in-place acknowledgements and routine-only bulk review, retaining audit
+  records, partial-save errors and no-JavaScript form submission.
+- Show attempt history and local payment evidence in legacy and HPOS order
+  editors. Offer AdminTool detail links only for compatible recorded IDs and
+  known methods; never substitute an IRIS callback ID or guess a search URL.
+- Preserve payment decisions, recovery timing, historical classification and
+  existing acknowledgements. Include English and Greek administration copy.
+
 - Skip WooCommerce onboarding during synthetic test setup and verify admin
   authentication through the profile page rather than toolbar visibility.
   Cover first-login navigation and rejection of anonymous admin access.

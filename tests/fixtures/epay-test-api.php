@@ -42,7 +42,13 @@ add_filter( 'query', static function ( $sql ) {
 	$report = 'report-error' === $scenario && false !== strpos( $sql, 'SELECT option_value' ) && false !== strpos( $sql, 'epay_paycenter_reconcile_report' );
 	$worker = 'worker-status-error' === $scenario && false !== strpos( $sql, 'SELECT option_value' ) && false !== strpos( $sql, 'epay_paycenter_recovery_status' );
 	$attempt = 'attempt-error' === $scenario && false !== strpos( $sql, 'SELECT * FROM' ) && false !== strpos( $sql, 'epay_paycenter_tickets' );
-	if ( $queue || $report || $worker || $attempt ) {
+	static $review_updates = 0;
+	$review_save = false;
+	if ( in_array( $scenario, array( 'review-save-error', 'review-partial-error' ), true ) && 0 === strpos( $sql, 'UPDATE ' ) && false !== strpos( $sql, 'epay_paycenter_reconcile_report' ) ) {
+		++$review_updates;
+		$review_save = 'review-save-error' === $scenario || 2 === $review_updates;
+	}
+	if ( $queue || $report || $worker || $attempt || $review_save ) {
 		return 'SELECT * FROM epay_test_unavailable_status';
 	}
 	return $sql;
@@ -354,7 +360,7 @@ function epay_test_set_fake_waf_result( $request ) {
 }
 
 function epay_test_set_fake_follow_up( $request ) {
-	$allowed_scenarios = array( 'paid', 'pending', 'declined', 'not_found', 'identity_mismatch', 'incomplete_paid', 'transport_error', 'failure_09_iris', 'failure_09_unknown', 'failure_09_card' );
+	$allowed_scenarios = array( 'paid', 'paid_unknown', 'pending', 'declined', 'not_found', 'identity_mismatch', 'incomplete_paid', 'transport_error', 'failure_09_iris', 'failure_09_unknown', 'failure_09_card' );
 	$allowed_channels  = array( 'eCommerce', '3DSecure' );
 	$scenario          = sanitize_key( (string) $request->get_param( 'scenario' ) );
 	$channel           = sanitize_text_field( (string) $request->get_param( 'channel' ) );
@@ -368,6 +374,18 @@ function epay_test_set_fake_follow_up( $request ) {
 	update_option( 'epay_test_fake_follow_up_channel', $channel, false );
 	update_option( 'epay_test_fake_follow_up_requests', array(), false );
 	return array( 'scenario' => $scenario, 'channel' => $channel );
+}
+
+function epay_test_review_cases( $request ) {
+	if ( 'POST' === $request->get_method() ) {
+		foreach ( (array) $request->get_param( 'cases' ) as $case ) {
+			if ( ! in_array( $case['type'], array( 'unresolved', 'missing_paid', 'double_paid', 'reconciliation_error' ), true ) ) {
+				return new WP_Error( 'invalid_case', 'Invalid synthetic case type.', array( 'status' => 400 ) );
+			}
+			Epay_Paycenter_Review::record( $case['type'], (int) $case['order_id'], $case['reference'], ! empty( $case['historical'] ) );
+		}
+	}
+	return get_option( 'epay_paycenter_reconcile_report', array( 'items' => array() ) );
 }
 
 function epay_test_reset_follow_up() {
@@ -844,6 +862,7 @@ add_action(
 		register_rest_route( 'epay-test/v1', '/fake-waf-result', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_set_fake_waf_result' ) );
 		register_rest_route( 'epay-test/v1', '/fake-follow-up', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_set_fake_follow_up' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/reset', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_reset_follow_up' ) );
+		register_rest_route( 'epay-test/v1', '/review-cases', array( 'methods' => array( 'GET', 'POST' ), 'permission_callback' => $permission, 'callback' => 'epay_test_review_cases' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/test-channel/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_test_follow_up_channel' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/enable', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_enable_follow_up' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/fail-next-payment-complete', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_fail_next_payment_complete' ) );

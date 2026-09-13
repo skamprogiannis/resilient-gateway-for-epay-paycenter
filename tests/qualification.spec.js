@@ -121,6 +121,7 @@ async function sendCallback(request, path, payload) {
 }
 
 const GATEWAY_SETTINGS = '/wp-admin/admin.php?page=wc-settings&tab=checkout&section=epay_paycenter';
+const REVIEW_PAGE = '/wp-admin/admin.php?page=epay-payment-reviews';
 
 function checkpointHours(row) {
   return (Date.parse(row.next_check_at + 'Z') - Date.parse(row.created_at + 'Z')) / 3600000;
@@ -247,8 +248,8 @@ test('@recovery-window uses bounded creation-relative checkpoints and preserves 
   }
   await saveRecoveryWindow(page, '168');
   expect(await readOrder(request, expired.order.order_id)).toEqual(expired.before);
-  await page.goto('/wp-admin/edit.php?post_type=shop_order');
-  const historical = page.locator('.epay-paycenter-review details').filter({ has: page.locator('summary', { hasText: 'Historical checks' }) });
+  await page.goto(`${REVIEW_PAGE}&review_group=historical`);
+  const historical = page.locator('.epay-review-table');
   await expect(historical).toContainText(expired.before.epay.merchant_reference);
 });
 
@@ -268,9 +269,8 @@ test('@recovery-window updates ongoing work without reopening reviewed attempts 
   const expired = await runWindowWorker(request, order);
   expect(expired.epay.follow_up[attempt.MerchantReference].state).toBe('unresolved');
   expect(expired.status).toBe('pending');
-  await page.goto('/wp-admin/edit.php?post_type=shop_order');
-  const group = page.locator('.epay-paycenter-review details').filter({ hasText: attempt.MerchantReference });
-  await group.locator('summary').click();
+  await page.goto(REVIEW_PAGE);
+  const group = page.locator('.epay-review-row').filter({ hasText: attempt.MerchantReference });
   await group.getByRole('button', { name: 'Mark reviewed' }).click();
   await expect(page.locator('.epay-paycenter-review')).not.toContainText(attempt.MerchantReference);
   await page.goto(GATEWAY_SETTINGS);
@@ -1516,7 +1516,204 @@ test('@followup reports a paid permanently deleted order without recreating it',
   expect(checked.ticket_statuses).toEqual({ [attempt.MerchantReference]: 'succeeded' });
 });
 
-test('@review staff see actionable cases only on order screens and can acknowledge without changing payment data', async ({ page, request }) => {
+test('@review @order-evidence order panel preserves retry references and links only a known card transaction', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const earlier = await issueAttempt(request, order);
+  const latest = await issueAttempt(request, order);
+  await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, earlier.MerchantReference));
+  const before = await readOrder(request, order.order_id);
+  await loginAsLocalAdmin(page);
+  await page.goto(`/wp-admin/post.php?post=${order.order_id}&action=edit`);
+  const panel = page.locator('#epay-order-payment');
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('.epay-attempt').first()).toContainText(latest.MerchantReference);
+  await expect(panel.locator('.epay-attempt').first().getByRole('link', { name: 'View transaction' })).toHaveCount(0);
+  await panel.getByText('Earlier attempts', { exact: false }).click();
+  const paid = panel.locator('.epay-attempt').filter({ hasText: earlier.MerchantReference });
+  await expect(paid).toContainText('Recorded paid reference');
+  await expect(paid.getByRole('link', { name: 'View transaction', exact: true })).toHaveAttribute('href', `https://paycenter.piraeusbank.gr/AdminTool/AdminToolDetails.aspx?id=2&mid=-1&ias=1&tid=9${order.order_id}&aa=1`);
+  await expect(panel.locator('form, button[type="submit"]')).toHaveCount(0);
+  await expect(panel).not.toContainText(fakeTicket(earlier.MerchantReference));
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await paid.getByRole('button', { name: 'Copy reference', exact: true }).click();
+  await expect(paid).toContainText('Reference copied.');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(earlier.MerchantReference);
+  expect(await readOrder(request, order.order_id)).toEqual(before);
+});
+
+test('@review @order-evidence IRIS links need a FOLLOW_UP ID and a recorded method', async ({ page, request }) => {
+  const callbackOrder = await createOrder(request);
+  const callback = await issueAttempt(request, callbackOrder);
+  await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(callbackOrder.order_id, callback.MerchantReference, { PaymentMethod: 'IRIS', TransactionId: '202001020000000000001234567890', ResponseCode: '00' }));
+  await loginAsLocalAdmin(page);
+  await page.goto(`/wp-admin/post.php?post=${callbackOrder.order_id}&action=edit`);
+  const panel = page.locator('#epay-order-payment');
+  await expect(panel.getByRole('link', { name: 'View transaction' })).toHaveCount(0);
+  await expect(panel.getByRole('link', { name: 'Open AdminTool' })).toHaveAttribute('href', 'https://paycenter.piraeusbank.gr/AdminTool/IRISAdminTool.aspx?id=6');
+  for (const scenario of ['paid', 'paid_unknown']) {
+    const order = await createOrder(request);
+    await issueAttempt(request, order);
+    await verifyAndEnableFollowUp(request, order);
+    await setFixture(request, 'fake-follow-up', { scenario, channel: 'eCommerce' });
+    await setFixture(request, `follow-up/run/${order.order_id}`, {});
+    const before = await readOrder(request, order.order_id);
+    await page.goto(`/wp-admin/post.php?post=${order.order_id}&action=edit`);
+    if (scenario === 'paid') {
+      await expect(panel.getByRole('link', { name: 'View transaction' })).toHaveAttribute('href', `https://paycenter.piraeusbank.gr/AdminTool/IRISAdminToolDetails.aspx?id=8&mid=&ias=1&tid=${before.epay.transaction_id}&aa=1`);
+    } else {
+      await expect(panel.getByRole('link', { name: 'View transaction' })).toHaveCount(0);
+      await expect(panel).toContainText('Not recorded');
+    }
+    expect(await readOrder(request, order.order_id)).toEqual(before);
+  }
+});
+
+test('@review @review-bulk enforces routine-only selection, partial saves, idempotency and concurrent merges', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  const cases = ['unresolved', 'unresolved', 'double_paid', 'reconciliation_error'].map((type, index) => ({
+    type, order_id: order.order_id, reference: `${order.order_id}-TSTCASE00000${index}`, historical: index === 1,
+  }));
+  const seeded = await setFixture(request, 'review-cases', { cases });
+  const keys = Object.keys(seeded.items);
+  const before = await readOrder(request, order.order_id);
+  await loginAsLocalAdmin(page);
+  await page.goto(REVIEW_PAGE);
+  const rows = page.locator('.epay-review-row');
+  await expect(rows).toHaveCount(4);
+  await expect(page.locator('input[name="review_keys[]"]')).toHaveCount(2);
+  const nonce = await page.locator('.epay-review-form [name="_wpnonce"]').inputValue();
+  const post = (selected, extra = {}) => page.request.post('/wp-admin/admin-ajax.php', {
+    form: { action: 'epay_paycenter_review', _wpnonce: nonce, bulk_action: 'review', ...Object.fromEntries(selected.map((key, index) => [`review_keys[${index}]`, key])) }, ...extra,
+  });
+  const forged = await post(keys.slice(2));
+  const forbidden = (await forged.json()).data;
+  expect(forbidden.saved).toEqual([]);
+  expect(Object.keys(forbidden.errors)).toEqual(keys.slice(2));
+  const unauthenticated = await request.post('/wp-admin/admin-ajax.php', { form: { action: 'epay_paycenter_review', review_key: keys[0], _wpnonce: nonce } });
+  expect(unauthenticated.ok()).toBe(false);
+  const badNonce = await page.request.post('/wp-admin/admin-ajax.php', { form: { action: 'epay_paycenter_review', review_key: keys[0], _wpnonce: 'invalid' } });
+  expect(badNonce.status()).toBe(403);
+  await page.setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification', 'X-Epay-Test-Recovery-Scenario': 'review-partial-error' });
+  await page.locator('.epay-review-select-all').check();
+  await page.locator('[name="bulk_action"]').selectOption('review');
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(rows).toHaveCount(3);
+  await expect(page.locator('.epay-review-error').filter({ hasText: 'Review could not be saved.' })).toHaveCount(1);
+  await expect(page.locator('[data-epay-count="all"]')).toHaveText('3');
+  await page.setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification' });
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(rows).toHaveCount(2);
+  const acknowledged = await (await request.get('/wp-json/epay-test/v1/review-cases')).json();
+  const again = await post(keys.slice(0, 2));
+  expect((await again.json()).data.saved).toEqual(keys.slice(0, 2));
+  const repeated = await (await request.get('/wp-json/epay-test/v1/review-cases')).json();
+  expect(repeated.items).toEqual(acknowledged.items);
+  await Promise.all(keys.slice(2).map(key => page.request.post('/wp-admin/admin-ajax.php', { form: { action: 'epay_paycenter_review', review_key: key, _wpnonce: nonce } })));
+  const final = await (await request.get('/wp-json/epay-test/v1/review-cases')).json();
+  expect(Object.values(final.items).every(item => item.reviewed_at && item.reviewed_by > 0)).toBe(true);
+  expect(await readOrder(request, order.order_id)).toEqual(before);
+  expect(before.epay.ticket_statuses[attempt.MerchantReference]).toBe('pending');
+});
+
+test('@review @review-errors order-panel failures preserve rows, focus and unsaved order edits', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  const unrelated = await createOrder(request);
+  await setFixture(request, 'review-cases', { cases: [
+    { type: 'unresolved', order_id: order.order_id, reference: attempt.MerchantReference },
+    { type: 'reconciliation_error', order_id: unrelated.order_id, reference: `${unrelated.order_id}-TSTOTHER0001` },
+  ] });
+  const before = await readOrder(request, order.order_id);
+  await loginAsLocalAdmin(page);
+  await page.goto(`/wp-admin/post.php?post=${order.order_id}&action=edit`);
+  const panel = page.locator('#epay-order-payment');
+  await expect(panel.locator('.epay-review-row')).toHaveCount(1);
+  await expect(panel).not.toContainText('TSTOTHER0001');
+  const notes = page.locator('#add_order_note');
+  await notes.fill('Unsaved synthetic staff note');
+  const reviewButton = panel.getByRole('button', { name: 'Mark reviewed', exact: true });
+  for (const failure of ['network', 'http', 'malformed']) {
+    await page.route('**/admin-ajax.php', route => {
+      if (!route.request().postData()?.includes('action=epay_paycenter_review')) return route.continue();
+      return failure === 'network' ? route.abort('failed') : route.fulfill({ status: failure === 'http' ? 503 : 200, contentType: 'application/json', body: '{"success":true,"data":{"saved":"invalid"}}' });
+    });
+    await reviewButton.focus();
+    await reviewButton.press('Enter');
+    await expect(panel.locator('.epay-review-error')).toContainText('Review could not be saved.');
+    await expect(panel.locator('.epay-review-row')).toHaveCount(1);
+    await expect(reviewButton).toBeEnabled();
+    await expect(reviewButton).toBeFocused();
+    await expect(notes).toHaveValue('Unsaved synthetic staff note');
+    await page.unroute('**/admin-ajax.php');
+  }
+  await page.setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification', 'X-Epay-Test-Recovery-Scenario': 'review-save-error' });
+  await panel.getByRole('button', { name: 'Mark reviewed', exact: true }).click();
+  await expect(panel.locator('.epay-review-error')).toContainText('Review could not be saved.');
+  await expect(panel.locator('.epay-review-row')).toHaveCount(1);
+  await expect(reviewButton).toBeFocused();
+  await page.setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification' });
+  await panel.getByRole('button', { name: 'Mark reviewed', exact: true }).click();
+  await expect(panel.locator('.epay-review-row')).toHaveCount(0);
+  await expect(panel.locator('.epay-review-feedback')).toBeFocused();
+  await expect(notes).toHaveValue('Unsaved synthetic staff note');
+  expect(await readOrder(request, order.order_id)).toEqual(before);
+});
+
+test('@review @review-pagination search, pagination and no-JavaScript review preserve unselected evidence', async ({ browser, request }) => {
+  const order = await createOrder(request);
+  const other = await createOrder(request);
+  const cases = Array.from({ length: 23 }, (_, index) => ({ type: 'unresolved', order_id: index === 22 ? other.order_id : order.order_id, reference: `${index === 22 ? other.order_id : order.order_id}-TST${String(index).padStart(9, '0')}` }));
+  await setFixture(request, 'review-cases', { cases });
+  const context = await browser.newContext({ baseURL: 'http://localhost:8081', javaScriptEnabled: false, extraHTTPHeaders: { 'X-Epay-Test': 'epay-qualification' } });
+  const page = await context.newPage();
+  await loginAsLocalAdmin(page);
+  await page.goto(REVIEW_PAGE);
+  await expect(page.locator('.epay-review-row')).toHaveCount(20);
+  await page.getByRole('link', { name: 'Next page', exact: true }).click();
+  await expect(page.locator('.epay-review-row')).toHaveCount(3);
+  const row = page.locator('.epay-review-row').first();
+  const reference = await row.locator('code').innerText();
+  await row.getByRole('button', { name: 'Mark reviewed', exact: true }).click();
+  await expect(page).toHaveURL(/paged=2/);
+  await expect(page.locator('.epay-review-row')).toHaveCount(2);
+  await expect(page.locator('.epay-review-row').filter({ hasText: reference })).toHaveCount(0);
+  await page.getByLabel('Order number or ePay reference', { exact: true }).fill(String(other.order_id));
+  await page.getByRole('button', { name: 'Search cases', exact: true }).click();
+  await expect(page.locator('.epay-review-row')).toHaveCount(1);
+  await page.getByLabel('Order number or ePay reference', { exact: true }).fill(cases[3].reference);
+  await page.getByRole('button', { name: 'Search cases', exact: true }).click();
+  await expect(page.locator('.epay-review-row')).toHaveCount(1);
+  await context.close();
+});
+
+test('@review @native-reviews orders link to a dedicated review page without a global queue', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, `follow-up/age-attempt/${order.order_id}`, {});
+  await setFixture(request, 'fake-follow-up', { scenario: 'not_found', channel: 'eCommerce' });
+  await setFixture(request, `follow-up/run/${order.order_id}`, {});
+  const before = await readOrder(request, order.order_id);
+  await loginAsLocalAdmin(page);
+  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  await expect(page.locator('.notice.epay-paycenter-review')).toHaveCount(0);
+  await page.locator('.subsubsub').getByRole('link', { name: 'ePay reviews (1)' }).click();
+  await expect(page.getByRole('heading', { name: 'ePay reviews', exact: true })).toBeVisible();
+  const row = page.locator('.epay-review-row').filter({ hasText: attempt.MerchantReference });
+  await expect(row).toContainText('Historical checks');
+  const documentId = await page.evaluate(() => { window.reviewDocumentId = Math.random(); return window.reviewDocumentId; });
+  await row.getByRole('button', { name: 'Mark reviewed', exact: true }).click();
+  await expect(row).toHaveCount(0);
+  expect(await page.evaluate(() => window.reviewDocumentId)).toBe(documentId);
+  await page.reload();
+  await expect(row).toHaveCount(0);
+  await page.getByRole('link', { name: 'Reviewed cases (1)', exact: true }).click();
+  await expect(row).toContainText('Reviewed (UTC):');
+  expect(await readOrder(request, order.order_id)).toEqual(before);
+});
+
+test('@review staff can individually acknowledge a missing paid order without changing evidence', async ({ page, request }) => {
   const historical = await createOrder(request);
   const oldAttempt = await issueAttempt(request, historical);
   await verifyAndEnableFollowUp(request, historical);
@@ -1538,19 +1735,16 @@ test('@review staff see actionable cases only on order screens and can acknowled
   await loginAsLocalAdmin(page);
   await page.goto('/wp-admin/');
   await expect(page.getByText(paidAttempt.MerchantReference, { exact: false })).toHaveCount(0);
-  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  await page.goto(REVIEW_PAGE);
   const review = page.locator('.epay-paycenter-review');
-  const discrepancies = review.locator('details').filter({ has: page.locator('summary', { hasText: 'Payment discrepancies' }) });
-  await expect(discrepancies).toHaveAttribute('open', '');
-  await expect(discrepancies).toContainText(paidAttempt.MerchantReference);
-  const unconfirmed = review.locator('details').filter({ has: page.locator('summary', { hasText: 'Unconfirmed attempts' }) });
-  await expect(unconfirmed).not.toHaveAttribute('open', '');
-  await expect(unconfirmed).toContainText(monitoredAttempt.MerchantReference);
   await expect(review).toContainText('Unreviewed cases: 3');
-  const paidRow = review.locator('li').filter({ hasText: paidAttempt.MerchantReference });
+  await expect(page.locator('.epay-review-row').filter({ hasText: monitoredAttempt.MerchantReference })).toContainText('Unconfirmed attempts');
+  await expect(page.locator('.epay-review-row').filter({ hasText: oldAttempt.MerchantReference })).toContainText('Historical checks');
+  const paidRow = review.locator('.epay-review-row').filter({ hasText: paidAttempt.MerchantReference });
   await expect(paidRow).toContainText('Bank confirmed payment, but the order is missing');
-  const reviewKey = await paidRow.locator('[name="review_key"]').inputValue();
-  const nonce = await paidRow.locator('[name="_wpnonce"]').inputValue();
+  await expect(paidRow.locator('input[type="checkbox"]')).toHaveCount(0);
+  const reviewKey = await paidRow.locator('[name="review_key"]').getAttribute('value');
+  const nonce = await page.locator('.epay-review-form [name="_wpnonce"]').inputValue();
   const unprivileged = await request.post('/wp-admin/admin-post.php', {
     form: { action: 'epay_paycenter_review', review_key: reviewKey, _wpnonce: nonce }, maxRedirects: 0,
   });
@@ -1559,22 +1753,19 @@ test('@review staff see actionable cases only on order screens and can acknowled
     form: { action: 'epay_paycenter_review', review_key: reviewKey, _wpnonce: 'invalid' }, maxRedirects: 0,
   });
   expect(forged.status()).toBe(403);
-  const historicalRow = review.locator('li').filter({ hasText: oldAttempt.MerchantReference });
-  await expect(historicalRow).not.toBeVisible();
-  if (process.env.EPAY_TEST_CAPTURE_UI) await page.screenshot({ path: test.info().outputPath('staff-review.png'), fullPage: true });
-  await review.getByText('Historical checks', { exact: false }).click();
-  await expect(historicalRow).toBeVisible();
   await paidRow.getByRole('button', { name: 'Mark reviewed', exact: true }).click();
-  await expect(review.getByText(paidAttempt.MerchantReference, { exact: false })).toHaveCount(0);
+  await expect(paidRow).toHaveCount(0);
   await page.reload();
-  await expect(review.getByText(paidAttempt.MerchantReference, { exact: false })).toHaveCount(0);
+  await expect(paidRow).toHaveCount(0);
   expect((await readOrder(request, historical.order_id)).epay.follow_up[oldAttempt.MerchantReference].state).toBe('unresolved');
   const missingState = await setFixture(request, `follow-up/run/${missing.order_id}`, {});
   expect(missingState.order).toBeNull();
   expect(missingState.ticket_statuses).toEqual({ [paidAttempt.MerchantReference]: 'succeeded' });
-  await page.goto('/wp-admin/admin.php?page=wc-settings&tab=checkout&section=epay_paycenter');
-  await review.locator('summary').filter({ hasText: /^Reviewed cases/ }).click();
-  await expect(review.locator('li').filter({ hasText: paidAttempt.MerchantReference })).toContainText('Reviewed (UTC)');
+  await page.goto(`${REVIEW_PAGE}&review_group=reviewed`);
+  await expect(paidRow).toContainText('Reviewed (UTC)');
+  await page.goto(GATEWAY_SETTINGS);
+  await expect(review).toContainText('No run recorded yet.');
+  await expect(review.locator('.epay-review-row')).toHaveCount(0);
 });
 
 test('@review @recovery-status distinguishes queued attempts and channel verification from a completed worker run', async ({ page, request }) => {
@@ -1587,7 +1778,7 @@ test('@review @recovery-status distinguishes queued attempts and channel verific
   await setFixture(request, 'follow-up/isolate-queue', { order_ids: [order.order_id] });
   const before = await readOrder(request, order.order_id);
   await loginAsLocalAdmin(page);
-  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  await page.goto(REVIEW_PAGE);
   const review = page.locator('.epay-paycenter-review');
   await expect(review).toContainText('Automatic recovery: Enabled');
   await expect(review).toContainText('Awaiting bank result: 2 attempts');
@@ -1608,7 +1799,7 @@ test('@review @recovery-faults reports delayed and failed checks without a false
   await setFixture(request, 'follow-up/isolate-queue', { order_ids: [order.order_id] });
   await setFixture(request, `follow-up/prioritise/${order.order_id}`, {});
   await loginAsLocalAdmin(page);
-  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  await page.goto(REVIEW_PAGE);
   const review = page.locator('.epay-paycenter-review');
   await expect(review).toContainText('Automatic checks are more than 15 minutes behind.');
   await setFixture(request, 'fake-follow-up', { scenario: 'transport_error', channel: 'eCommerce' });
@@ -1645,11 +1836,11 @@ test('@review @review-technical a failed attempt read becomes a technical check 
   });
   expect(run.ok()).toBe(true);
   await loginAsLocalAdmin(page);
-  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  await page.goto(REVIEW_PAGE);
   const review = page.locator('.epay-paycenter-review');
   await expect(review).toContainText('Check problems (1)');
   await expect(review).toContainText('Completed with errors.');
-  await expect(review).not.toContainText('Payment discrepancies');
+  await expect(review).toContainText('Payment discrepancies (0)');
   expect(await readOrder(request, order.order_id)).toEqual(before);
 });
 
@@ -1668,7 +1859,7 @@ test('@review @review-locale Greek review labels and historical disclosure fit o
   await setFixture(request, 'follow-up/isolate-queue', { order_ids: [] });
   await loginAsLocalAdmin(page);
   await page.setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification', 'X-Epay-Test-Locale': 'el' });
-  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  await page.goto(REVIEW_PAGE);
   const review = page.locator('.epay-paycenter-review');
   await expect(review).toContainText('Αυτόματη ανάκτηση: Ενεργή');
   await expect(review).toContainText('Εκκρεμείς έλεγχοι: 2');
@@ -1676,18 +1867,39 @@ test('@review @review-locale Greek review labels and historical disclosure fit o
     await page.setViewportSize({ width, height: 900 });
     const box = await review.boundingBox();
     expect(box.width).toBeLessThanOrEqual(width);
-    expect(await review.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    const overflow = await review.evaluate(element => {
+      const right = element.getBoundingClientRect().right;
+      return [...element.querySelectorAll('*')].filter(child => child.getBoundingClientRect().right > right + 1).map(child => `${child.tagName}.${child.className}: ${child.getBoundingClientRect().width}`);
+    });
+    expect(overflow).toEqual([]);
     if (process.env.EPAY_TEST_CAPTURE_UI) await page.screenshot({ path: test.info().outputPath(`review-${name}-el.png`), fullPage: true });
+    if (process.env.EPAY_TEST_CAPTURE_UI) await page.screenshot({ path: `.impeccable/review/reviews-${name}-el.png`, fullPage: true });
   }
-  const historicalGroup = review.locator('details').filter({ hasText: attempt.MerchantReference });
-  const toggle = historicalGroup.locator('summary');
-  await toggle.focus();
-  await page.keyboard.press('Enter');
-  await expect(historicalGroup.locator('li')).toBeVisible();
-  await page.keyboard.press('Enter');
-  await expect(historicalGroup.locator('li')).not.toBeVisible();
+  await page.getByLabel('Κατηγορία ελέγχου', { exact: true }).selectOption('historical');
+  await expect(review.locator('.epay-review-row')).toHaveCount(1);
+  await expect(review.locator('.epay-review-row')).toContainText(attempt.MerchantReference);
   await page.goto(`/wp-admin/post.php?post=${historical.order_id}&action=edit`);
-  await expect(review).toBeVisible();
+  await expect(page.locator('#epay-order-payment')).toBeVisible();
+  if (process.env.EPAY_TEST_CAPTURE_UI) {
+    for (const locale of ['el', 'en_US']) {
+      await page.setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification', 'X-Epay-Test-Locale': locale });
+      for (const [name, width] of [['desktop', 1280], ['mobile', 390]]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`/wp-admin/post.php?post=${historical.order_id}&action=edit`);
+        const panel = page.locator('#epay-order-payment');
+        await expect(panel).toBeVisible();
+        expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: `.impeccable/review/order-${name}-${locale}.png`, fullPage: true });
+        const panelBox = await panel.boundingBox();
+        await page.screenshot({ path: `.impeccable/review/order-panel-${name}-${locale}.png`, clip: panelBox, fullPage: true });
+        if (locale === 'en_US') {
+          await page.goto(REVIEW_PAGE);
+          await page.screenshot({ path: `.impeccable/review/reviews-${name}-en_US.png`, fullPage: true });
+        }
+      }
+    }
+  }
 });
 
 test('@review @review-resolved final bank evidence retires unconfirmed and settlement-error cases', async ({ page, request }) => {
@@ -1698,7 +1910,7 @@ test('@review @review-resolved final bank evidence retires unconfirmed and settl
   await setFixture(request, 'fake-follow-up', { scenario: 'not_found', channel: 'eCommerce' });
   await setFixture(request, `follow-up/run/${order.order_id}`, {});
   await loginAsLocalAdmin(page);
-  await page.goto('/wp-admin/edit.php?post_type=shop_order');
+  await page.goto(REVIEW_PAGE);
   const review = page.locator('.epay-paycenter-review');
   await expect(review).toContainText(attempt.MerchantReference);
   await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, attempt.MerchantReference, {

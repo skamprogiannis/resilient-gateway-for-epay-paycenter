@@ -1,49 +1,173 @@
-/* Native WordPress review controls, scoped to order and gateway screens. */
 .epay-paycenter-review {
 	overflow-wrap: anywhere;
 }
-
+.epay-paycenter-review [hidden], .epay-order-payment [hidden] {
+	display: none !important;
+}
+.epay-paycenter-review .epay-review-health {
+	margin: 16px 0;
+}
+.epay-review-health summary, .epay-order-payment summary {
+	cursor: pointer;
+	font-weight: 600;
+}
 .epay-review-overview {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 4px 24px;
+	column-gap: 24px;
 }
-
-.epay-review-overview > p {
-	margin: 0;
+.epay-review-overview p {
+	margin-bottom: 0;
 }
-
-.epay-paycenter-review details {
-	border-top: 1px solid #dcdcde;
-	margin-top: 8px;
+.epay-review-form {
+	clear: both;
 }
-
-.epay-paycenter-review summary {
-	cursor: pointer;
-	font-weight: 600;
-	padding: 8px 0;
+.epay-mobile-select-label {
+	display: none;
 }
-
-.epay-paycenter-review summary:focus-visible {
+.epay-review-category {
+	display: none;
+}
+.epay-review-bulk-help {
+	clear: both;
+	margin: 8px 0 12px;
+}
+.epay-review-table td p {
+	max-width: 70ch;
+	margin: 8px 0;
+}
+.epay-review-table .epay-review-action-column {
+	width: 150px;
+}
+.epay-reference {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 10px;
+	margin: 8px 0;
+}
+.epay-reference code {
+	white-space: normal;
+	overflow-wrap: anywhere;
+	user-select: all;
+}
+.epay-copy-feedback {
+	flex-basis: 100%;
+}
+.epay-copy-feedback:empty, .epay-review-error:empty, .epay-review-feedback:empty {
+	display: none;
+}
+.epay-review-error {
+	color: #b32d2e;
+}
+.epay-review-feedback:focus, .epay-order-payment summary:focus-visible, .epay-review-health summary:focus-visible {
 	outline: 2px solid #2271b1;
 	outline-offset: 2px;
 }
-
-.epay-paycenter-review li {
-	margin-bottom: 16px;
+.epay-copy-reference, .epay-review-select-all, .epay-order-reviews .epay-mark-reviewed {
+	display: none;
 }
-
-@media (max-width: 782px) {
-	.epay-review-overview {
+.epay-review-js .epay-copy-reference, .epay-review-js .epay-review-select-all, .epay-review-js .epay-order-reviews .epay-mark-reviewed {
+	display: inline-block;
+}
+.epay-order-payment .epay-attempt {
+	padding: 12px 0;
+	border-bottom: 1px solid #dcdcde;
+}
+.epay-order-payment .epay-attempt:last-child {
+	border-bottom: 0;
+}
+.epay-order-payment dl {
+	display: grid;
+	grid-template-columns: minmax(120px, 180px) 1fr;
+	gap: 6px 16px;
+	margin: 12px 0;
+}
+.epay-order-payment dt {
+	font-weight: 600;
+}
+.epay-order-payment dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+.epay-order-reviews {
+	margin-top: 20px;
+}
+.epay-order-reviews .epay-review-row {
+	margin: 16px 0;
+}
+@media screen and (max-width: 782px) {
+	.epay-review-filters {
+		display: none;
+	}
+	.epay-review-category {
+		display: block;
+		margin: 16px 0 12px;
+	}
+	.epay-review-category label {
+		display: block;
+		margin-bottom: 6px;
+	}
+	.epay-review-category select {
+		width: 100%;
+		max-width: 100%;
+	}
+	.epay-review-search .search-box {
+		position: static;
+		float: none;
+		display: flex;
+		gap: 8px;
+		margin: 12px 0;
+	}
+	.epay-review-search {
+		clear: both;
+		padding-top: 1px;
+	}
+	.epay-review-search input[type="search"] {
+		min-width: 0;
+		flex: 1;
+		margin: 0;
+	}
+	.epay-review-form .tablenav.top {
+		height: auto;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+	.epay-review-form .tablenav.top .actions {
 		display: block;
 	}
-
-	.epay-review-overview > p {
-		margin: 4px 0;
+	.epay-review-table thead {
+		display: block;
 	}
-
-	.epay-paycenter-review summary {
-		min-height: 44px;
-		box-sizing: border-box;
+	.epay-review-table thead th {
+		display: none;
+	}
+	.epay-review-table thead .check-column {
+		grid-column: 1 / -1;
+		width: auto;
+	}
+	.epay-review-js .epay-mobile-select-label {
+		display: inline;
+	}
+	.epay-review-table tr {
+		display: grid;
+		grid-template-columns: 36px minmax(0, 1fr);
+	}
+	.epay-review-table td {
+		display: block;
+		grid-column: 2;
+		width: auto;
+	}
+	.epay-review-table .check-column {
+		grid-column: 1;
+		grid-row: 1 / 4;
+	}
+	.epay-order-payment dl {
+		grid-template-columns: 1fr;
+		gap: 4px;
+	}
+	.epay-order-payment dd {
+		margin-bottom: 8px;
 	}
 }

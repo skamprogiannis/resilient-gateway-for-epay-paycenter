@@ -34,6 +34,8 @@ final class Epay_Paycenter_Plugin {
 
 		// Initialization also restores missing cron events after plugin updates.
 		Epay_Paycenter_Reconciliation::init();
+		new Epay_Paycenter_Review_Admin( array( 'Epay_Paycenter_Reconciliation', 'status' ) );
+		Epay_Paycenter_Order_Admin::init();
 
 		add_filter( 'woocommerce_payment_gateways', array( __CLASS__, 'register_gateway' ) );
 		add_filter( 'plugin_action_links_' . EPAY_PAYCENTER_PLUGIN_BASENAME, array( __CLASS__, 'plugin_action_links' ) );
@@ -307,6 +309,9 @@ final class Epay_Paycenter_Plugin {
 			'class-epay-paycenter-credential-notice.php',
 			'class-epay-paycenter-order-notices.php',
 			'class-epay-paycenter-review.php',
+			'class-epay-paycenter-review-admin.php',
+			'class-epay-paycenter-order-evidence.php',
+			'class-epay-paycenter-order-admin.php',
 			'class-epay-paycenter-open-tickets.php',
 			'class-epay-paycenter-logger.php',
 			'class-epay-paycenter-ticket-audit.php',
