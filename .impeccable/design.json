@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-11T21:07:45Z",
+  "title": "Design System: ePay native administration",
+  "extensions": {
+    "colorMeta": {
+      "focus-blue": {
+        "role": "primary",
+        "displayName": "Focus blue",
+        "tonalRamp": ["oklch(15% 0.1249 247.74)", "oklch(26.43% 0.1249 247.74)", "oklch(37.86% 0.1249 247.74)", "oklch(49.29% 0.1249 247.74)", "oklch(60.71% 0.1249 247.74)", "oklch(72.14% 0.1249 247.74)", "oklch(83.57% 0.1249 247.74)", "oklch(95% 0.1249 247.74)"]
+      },
+      "error-red": {
+        "role": "secondary",
+        "displayName": "Error red",
+        "tonalRamp": ["oklch(15% 0.1708 25.35)", "oklch(26.43% 0.1708 25.35)", "oklch(37.86% 0.1708 25.35)", "oklch(49.29% 0.1708 25.35)", "oklch(60.71% 0.1708 25.35)", "oklch(72.14% 0.1708 25.35)", "oklch(83.57% 0.1708 25.35)", "oklch(95% 0.1708 25.35)"]
+      },
+      "divider-gray": {
+        "role": "neutral",
+        "displayName": "Divider gray",
+        "tonalRamp": ["oklch(15% 0.0027 286.35)", "oklch(26.43% 0.0027 286.35)", "oklch(37.86% 0.0027 286.35)", "oklch(49.29% 0.0027 286.35)", "oklch(60.71% 0.0027 286.35)", "oklch(72.14% 0.0027 286.35)", "oklch(83.57% 0.0027 286.35)", "oklch(95% 0.0027 286.35)"]
+      }
+    },
+    "typographyMeta": {
+      "emphasis": { "displayName": "Native emphasis", "purpose": "Disclosure summaries and definition-list labels; font family and size belong to the host." }
+    },
+    "shadows": [
+      { "name": "native-button-focus", "value": "0 0 0 1px #3582c4", "purpose": "Inherited WordPress button focus treatment, observed in the qualification site's wp-includes/css/buttons.css." }
+    ],
+    "breakpoints": [
+      { "name": "native-admin-mobile", "value": "782px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Native button",
+      "kind": "button",
+      "description": "Search, apply and pagination controls; snapshot of inherited WordPress button CSS, not a plugin override.",
+      "html": "<button type=\"button\" class=\"ds-native-button\">Search cases</button>",
+      "css": ".ds-native-button { display: inline-block; font-family: inherit; font-size: 13px; line-height: 2.15384615; min-height: 30px; padding: 0 10px; cursor: pointer; border: 1px solid #2271b1; border-radius: 3px; white-space: nowrap; color: #2271b1; background: #f6f7f7; } .ds-native-button:hover { background: #f0f0f1; border-color: #0a4b78; color: #0a4b78; } .ds-native-button:focus-visible { background: #f6f7f7; border-color: #3582c4; color: #0a4b78; box-shadow: 0 0 0 1px #3582c4; outline: 2px solid transparent; outline-offset: 0; } .ds-native-button:active { background: #f6f7f7; border-color: #8c8f94; box-shadow: none; } .ds-native-button:disabled { color: #a7aaad; border-color: #dcdcde; background: #f6f7f7; box-shadow: none; cursor: default; } @media (max-width: 782px) { .ds-native-button { padding: 0 14px; line-height: 2.71428571; font-size: 14px; min-height: 40px; margin-bottom: 4px; } }"
+    },
+    {
+      "name": "Native small button",
+      "kind": "button",
+      "description": "Copy and individual review actions; inherits WordPress's larger mobile treatment.",
+      "html": "<button type=\"button\" class=\"ds-small-button\">Mark reviewed</button>",
+      "css": ".ds-small-button { display: inline-block; font-family: inherit; font-size: 11px; line-height: 2.18181818; min-height: 26px; padding: 0 8px; cursor: pointer; border: 1px solid #2271b1; border-radius: 3px; white-space: nowrap; color: #2271b1; background: #f6f7f7; } .ds-small-button:hover { background: #f0f0f1; border-color: #0a4b78; color: #0a4b78; } .ds-small-button:focus-visible { background: #f6f7f7; border-color: #3582c4; color: #0a4b78; box-shadow: 0 0 0 1px #3582c4; outline: 2px solid transparent; outline-offset: 0; } .ds-small-button:active { background: #f6f7f7; border-color: #8c8f94; box-shadow: none; } .ds-small-button:disabled { color: #a7aaad; border-color: #dcdcde; background: #f6f7f7; box-shadow: none; cursor: default; } @media (max-width: 782px) { .ds-small-button { padding: 0 14px; line-height: 2.71428571; font-size: 14px; min-height: 40px; margin-bottom: 4px; } }"
+    },
+    {
+      "name": "Recovery disclosure",
+      "kind": "custom",
+      "refersTo": "disclosure-summary",
+      "description": "Native details and summary with the plugin's keyboard focus outline; unavailable-state copy is shipped UI text.",
+      "html": "<details class=\"ds-disclosure\"><summary>Recovery status</summary><p role=\"alert\">Payment review status is unavailable. Ask the site administrator to check the gateway log.</p></details>",
+      "css": ".ds-disclosure { margin: 16px 0; overflow-wrap: anywhere; } .ds-disclosure summary { cursor: pointer; font-weight: 600; } .ds-disclosure summary:focus-visible { outline: 2px solid #2271b1; outline-offset: 2px; }"
+    },
+    {
+      "name": "Recorded fields",
+      "kind": "custom",
+      "description": "Order-attempt definition list; sample values use the actual missing-evidence state.",
+      "html": "<dl class=\"ds-evidence\"><dt>Payment method</dt><dd>Not recorded</dd><dt>Recorded bank response</dt><dd>Not recorded</dd></dl>",
+      "css": ".ds-evidence { display: grid; grid-template-columns: minmax(120px, 180px) 1fr; gap: 6px 16px; margin: 12px 0; } .ds-evidence dt { font-weight: 600; } .ds-evidence dd { margin: 0; overflow-wrap: anywhere; } @media (max-width: 782px) { .ds-evidence { grid-template-columns: 1fr; gap: 4px; } .ds-evidence dd { margin-bottom: 8px; } }"
+    },
+    {
+      "name": "Review feedback",
+      "kind": "custom",
+      "refersTo": "review-error",
+      "description": "Polite status, inline alert and programmatic focus target; empty messages collapse.",
+      "html": "<div class=\"ds-feedback-example\"><p class=\"ds-feedback\" role=\"status\" aria-live=\"polite\" tabindex=\"-1\">Some reviews were not saved. Check the remaining rows and try again.</p><p class=\"ds-error\" role=\"alert\">Review could not be saved. Please try again.</p></div>",
+      "css": ".ds-feedback-example { overflow-wrap: anywhere; } .ds-feedback:empty, .ds-error:empty { display: none; } .ds-error { color: #b32d2e; } .ds-feedback:focus { outline: 2px solid #2271b1; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Native WordPress/WooCommerce",
+    "overview": "The review queue and ePay order panel belong to the surrounding administration interface. Their visual language is compact, familiar and factual: native tables, ordinary controls, local feedback and expandable payment evidence.\n\nThis record covers those two surfaces only. WordPress and WooCommerce own the surrounding typography, control styling, navigation and metabox chrome. The frontmatter records the small recurring additions in [the review stylesheet](assets/css/epay-paycenter-review.css); it is not a replacement theme or a specification for unrelated gateway settings.",
+    "keyCharacteristics": ["Native controls and document hierarchy.", "Readable evidence with explicit unknown and error states.", "Responsive rows and stable keyboard context."],
+    "rules": [
+      { "name": "The Explicit State Rule", "body": "State is written in words; color alone never communicates a payment outcome or review failure.", "section": "colors" },
+      { "name": "The Host Hierarchy Rule", "body": "Express hierarchy with native headings, descriptions, strong text and code before adding a new type treatment.", "section": "typography" }
+    ],
+    "dos": [
+      "Do inherit WordPress and WooCommerce controls, typography and metabox chrome.",
+      "Do preserve complete references, readable wrapping and visible keyboard focus.",
+      "Do keep unknown results, failures and saved acknowledgements explicit in text.",
+      "Do check both English and Greek at desktop and mobile widths."
+    ],
+    "donts": [
+      "Don't turn these admin surfaces into a separate dashboard or brand system.",
+      "Don't use reviewed styling or copy to imply that payment, order or stock state changed.",
+      "Don't remove failed cases or replace unavailable counts with zero.",
+      "Don't ship qualification screenshots as product assets; they contain synthetic test evidence and are excluded from releases."
+    ]
+  }
+}

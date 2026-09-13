@@ -15,6 +15,10 @@
 /phpcs.xml.dist export-ignore
 /phpstan.neon export-ignore
 /README.md export-ignore
+/PRODUCT.md export-ignore
+/DESIGN.md export-ignore
+/.impeccable export-ignore
+/.impeccable/** export-ignore
 /SECURITY.md export-ignore
 /UPSTREAM.md export-ignore
 /docs export-ignore
