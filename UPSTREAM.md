@@ -39,3 +39,9 @@ and Greek. Upstream attribution and the imported source remain unchanged.
 Release 2.2.0 (2026-09-13) adds native WooCommerce review and order-evidence
 interfaces. This is maintained-fork administration work; the upstream import,
 callback processing and bank recovery decisions remain unchanged.
+
+Release 2.2.1 (2026-09-15) adds optional handoff diagnostics and audit-driven
+callback privacy, signed-decision, concurrent-settlement and durable-recovery
+fixes. It preserves per-attempt order evidence, handles activation scheduling
+errors and pins CI dependencies. These are maintained-fork changes; the
+immutable upstream import remains unchanged.

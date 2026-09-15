@@ -4,7 +4,7 @@ Tags: woocommerce, payment gateway, epay, iris, greece
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.2.0
+Stable tag: 2.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -269,8 +269,9 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 == Changelog ==
 
-= Unreleased =
+= 2.2.1 =
 
+* Add optional, correlated checkout handoff diagnostics with bounded, scrubbed browser reports. Diagnostic reporting never determines payment status or blocks submission.
 * Preserve matching callback history from older versions before starting a new payment attempt, and verify that the history was saved.
 * Prevent WooCommerce's unpaid-order timer from overwriting a concurrent successful payment; retain existing stock-hold durations.
 * Recover newer due attempts even when older attempts are waiting for later checks.

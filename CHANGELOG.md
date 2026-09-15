@@ -3,7 +3,7 @@
 Notable changes to Resilient Gateway for ePay Paycenter are recorded here.
 Release artifacts and checksums belong in GitHub Releases.
 
-## Unreleased
+## 2.2.1 — 2026-09-15
 
 - Select legacy storage explicitly for the primary CI suite, then qualify
   recovery, callback safeguards and order administration with HPOS.
@@ -39,8 +39,7 @@ Release artifacts and checksums belong in GitHub Releases.
   WooCommerce log, with expiring diagnostic-only authorization and bounded,
   scrubbed reports. Reporting never determines payment state or gates submission.
 - Correlate ticket timing, callback decisions, customer returns and automatic
-  stock cancellation; include actual WordPress scheduling errors. Payment
-  authentication, order transitions and recovery timing are unchanged.
+  stock cancellation; include actual WordPress scheduling errors.
 - Cover diagnostic authorization, disabled logging, browser/reporting failures,
   concurrent attempts and classic/Blocks handoffs using synthetic payments.
 
