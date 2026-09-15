@@ -183,7 +183,8 @@ specified by the payment provider for any required correction.
 ## Logs and privacy
 
 WooCommerce logs use source `epay-paycenter`. The callback envelope records
-the request method and the names and count of present callback fields. Later
+the request method, names and count of present callback fields, and a bounded
+`claimed_reference`. That reference is unverified until authentication succeeds. Later
 verified paths can record order and transaction identifiers and result codes.
 Credential keys are matched case-insensitively; password digests, TranTickets,
 HashKeys, and likely card numbers are redacted.
@@ -194,11 +195,70 @@ and never post transaction data in a public issue.
 
 Follow-up results include reference, channel, result/response code, state,
 transaction ID/time, payment method, and IRIS status. These operational records,
-order notes, and the attempt table cover routine payment monitoring. A separate
-checkout investigation logger can be deactivated after exporting its evidence;
-retain it inactive for future browser, JavaScript, or delivery-widget problems.
+order notes, and the attempt table cover routine payment monitoring. The handoff
+diagnostics below do not require a separate checkout-investigation snippet.
+They do not track checkout fields, shipping choices, or delivery widgets.
 Existing detailed Ticketing logs may contain customer contact/address fields;
 keep them private and apply a retention policy.
+
+### Tracing a payment handoff
+
+Enable the existing **Debug logging** option when investigating a problem.
+`WP_DEBUG` also enables these diagnostics. With both off, the receipt contains
+no reporting authorization and the browser sends no diagnostic reports.
+Existing operational info/error logs retain their levels.
+
+Search the WooCommerce log for the complete MerchantReference, not just the
+order number: one order can have several attempts. New records use the message
+`ePay handoff diagnostic`, with `origin`, `event`, `order_id`, and `reference`.
+`redirect_rendered` also supplies a per-document `trace_id`; browser reports use
+that same trace, a sequence number, and elapsed milliseconds. Reports may arrive
+out of order. Log timestamps describe server receipt, not the bank's clock.
+
+- `receipt_started`, the timed `IssueNewTicket response`, and `redirect_rendered`
+  show server preparation. A missing redirect template is an explicit error.
+  Rendering does not prove the customer received or saw the page.
+- Browser `script_started`, `form_found`, and `submission_attempted` locate the
+  handoff. Startup includes a bounded browser user-agent string. Submission
+  means the script called the native form method, not that Paycenter received
+  it or that money moved.
+- `form_missing`, `submission_exception`, `javascript_error`, and
+  `unhandled_rejection` carry bounded, scrubbed error details. Only same-origin
+  script paths are sent by the helper, without query strings or fragments.
+- `still_visible_after_submit` is a single observation after ten seconds with
+  the receipt still visible. `page_hidden` and `page_restored` describe document
+  lifecycle, including a back/forward-cache restore. None proves success,
+  cancellation, or failure.
+- Callback records distinguish a claimed reference from authenticated bank
+  results. `callback_completed` records local success-handler completion.
+  `customer_cancelled` records a valid cancellation backlink and resulting
+  order status; `stock_reservation_expired` records automatic cancellation.
+- `checkout_return_requested`, `payment_page_requested`, and
+  `thankyou_requested` record an order-key-authorized server request. They are
+  order-level observations, not attributed to an arbitrary latest attempt,
+  and do not prove the page displayed or an email was delivered.
+
+Scheduling errors include the actual WordPress error code, a scrubbed message,
+the scheduled hook, and requested UTC time. Retry timing is unchanged.
+
+Browser delivery is best effort: blockers, connectivity, navigation, disabled
+JavaScript, or failure to load the helper can leave gaps. Absence of an event
+does not establish where payment failed. These logs cannot inspect the bank's
+page, issuer app, DIAS processing, or the customer's account. Compare conflicting
+charge reports with AdminTool and the provider's final result.
+
+Reports go only to this site's `admin-ajax.php`, using a separate signed
+permission bound to one order, reference, trace, and one-hour expiry. They cannot
+change orders, stock, payment attempts, or reviews. The receiver accepts only
+known fields/events and at most 8 KiB per payload. The helper sends at most 20
+reports per document; expiring server-side sequence tracking adds a best-effort
+replay/rate throttle. Reporting never waits for a response, retries indefinitely,
+or gates submission. No new payment secret, form contents, full query URL,
+or customer-field collection is added to diagnostic records.
+
+Use WooCommerce's existing log retention. No new audit table or separate log
+store is introduced. Keep exported diagnostics private, alongside the existing
+Ticketing logs; redaction is not a reason to publish transaction records.
 
 ## Legacy Papaki cutover
 

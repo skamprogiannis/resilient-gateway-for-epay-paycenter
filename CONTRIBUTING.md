@@ -79,6 +79,16 @@ settings, and migrations in Chromium. The matrix checks classic and Blocks
 checkout across seven browser configurations. Add `-v` to the shutdown command
 only when you want to reset the synthetic database.
 
+Shared API fixtures load through the mounted plugin directory. Only `setup.php`
+gets an extra mount, so bootstrap checks catch dependencies on unmounted fixtures.
+
+Handoff diagnostics redirect the browser to a loopback HTTP fake bank and
+assert that the original form destination was Paycenter. Avoid interception in tests
+that require navigation-time beacon delivery: even an unrelated interception
+rule can cause Playwright WebKit to discard the final report. The qualification
+site defaults to `WP_DEBUG` off so the gateway's logging switch can be tested;
+gateway debug logging is enabled by the synthetic setup.
+
 Run syntax and whitespace checks before submitting:
 
 ```bash
