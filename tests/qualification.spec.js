@@ -1717,6 +1717,27 @@ test('@review @order-evidence @legacy-evidence the first post-upgrade retry reta
   await expect(declined).toContainText('Failure / 05');
 });
 
+test('@review @legacy-evidence @legacy-write-error a failed history save cannot replace its reference', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const earlier = await issueAttempt(request, order);
+  await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, earlier.MerchantReference, { StatusFlag: 'Failure', ResponseCode: '05' }));
+  await setFixture(request, `legacy-callback-evidence/${order.order_id}`, {});
+  const before = await readOrder(request, order.order_id);
+  const response = await request.get(order.receipt_url, { headers: { 'X-Epay-Test-Recovery-Scenario': 'legacy-snapshot-error' } });
+  const html = await response.text();
+  expect(html.includes('id="epay-paycenter-form"')).toBe(false);
+  expect(html).toContain('Payment could not be started. Please refresh this page to try again.');
+  expect(await readOrder(request, order.order_id)).toEqual(before);
+  await loginAsLocalAdmin(page);
+  await page.goto(`/wp-admin/post.php?post=${order.order_id}&action=edit`);
+  const panel = page.locator('#epay-order-payment');
+  await expect(panel).toContainText('Failure / 05');
+  await issueAttempt(request, order);
+  await page.reload();
+  await panel.getByText('Earlier attempts', { exact: false }).click();
+  await expect(panel.locator('.epay-attempt').filter({ hasText: earlier.MerchantReference })).toContainText('Failure / 05');
+});
+
 test('@review @order-evidence order panel preserves retry references and links only a known card transaction', async ({ page, request }) => {
   const order = await createOrder(request);
   const earlier = await issueAttempt(request, order);

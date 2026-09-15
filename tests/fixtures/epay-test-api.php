@@ -45,13 +45,14 @@ add_filter( 'query', static function ( $sql ) {
 	$worker = 'worker-status-error' === $scenario && false !== strpos( $sql, 'SELECT option_value' ) && false !== strpos( $sql, 'epay_paycenter_recovery_status' );
 	$attempt = 'attempt-error' === $scenario && false !== strpos( $sql, 'SELECT * FROM' ) && false !== strpos( $sql, 'epay_paycenter_tickets' );
 	$insert = 'ticket-insert-error' === $scenario && 0 === strpos( $sql, 'INSERT INTO' ) && false !== strpos( $sql, 'epay_paycenter_tickets' );
+	$snapshot = 'legacy-snapshot-error' === $scenario && 0 === strpos( $sql, 'INSERT INTO' ) && false !== strpos( $sql, '_epay_callback_evidence_' );
 	static $review_updates = 0;
 	$review_save = false;
 	if ( in_array( $scenario, array( 'review-save-error', 'review-partial-error' ), true ) && 0 === strpos( $sql, 'UPDATE ' ) && false !== strpos( $sql, 'epay_paycenter_reconcile_report' ) ) {
 		++$review_updates;
 		$review_save = 'review-save-error' === $scenario || 2 === $review_updates;
 	}
-	if ( $queue || $report || $worker || $attempt || $insert || $review_save ) {
+	if ( $queue || $report || $worker || $attempt || $insert || $snapshot || $review_save ) {
 		return 'SELECT * FROM epay_test_unavailable_status';
 	}
 	return $sql;

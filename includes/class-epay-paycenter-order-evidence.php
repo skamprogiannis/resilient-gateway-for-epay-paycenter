@@ -65,6 +65,9 @@ final class Epay_Paycenter_Order_Evidence {
 			if ( null !== $evidence ) {
 				self::record_callback( $order, $reference, $evidence );
 				$order->save_meta_data();
+				// WooCommerce can silently fail a metadata insert; read the stored value.
+				$order->read_meta_data( true );
+				return self::callback_evidence( $order, $reference, false ) === $evidence;
 			}
 			return true;
 		} finally {

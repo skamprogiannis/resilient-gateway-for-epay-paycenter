@@ -7,6 +7,7 @@ Release artifacts and checksums belong in GitHub Releases.
 
 - Preserve provably bound pre-upgrade callback details before the first retry
   replaces the shared reference, without assigning them to the new attempt.
+  Verify the stored snapshot before allowing a retry after a metadata write.
 - Coordinate WooCommerce's native unpaid-order timer with authenticated
   callbacks, retaining the existing hold duration when recovery is disabled.
 - Retain each queried recovery attempt during the locked reread, including
