@@ -195,7 +195,7 @@ test('@diagnostics correlates unauthenticated callback arrivals without treating
   const context = await receipt(request, order);
   const before = await (await request.get(`/wp-json/epay-test/v1/order/${order.order_id}`)).json();
   await request.post('/wc-api/epay_paycenter/', {
-    form: { MerchantReference: context.reference, ResultCode: '0', StatusFlag: 'Success', HashKey: 'invalid-signature' }, maxRedirects: 0,
+    form: { MerchantReference: context.reference, ResultCode: '0', ResponseCode: '00', StatusFlag: 'Success', HashKey: 'invalid-signature' }, maxRedirects: 0,
   });
   const entries = await logs(request, context.reference);
   expect(entries.find(entry => entry.message.startsWith('Callback envelope')).message).toContain('"claimed_reference"');
