@@ -5,6 +5,9 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Base callback approval and pending decisions on signed fields. Unsigned
+  result or method fields cannot turn an approval or unresolved transfer into
+  a final decline; trusted follow-up card declines remain supported.
 - Do not disclose keyed order URLs on unauthenticated callbacks, including
   callbacks for already-paid orders and rejected decline responses.
 - Coordinate callback, recovery and stock-release mutations with a shared

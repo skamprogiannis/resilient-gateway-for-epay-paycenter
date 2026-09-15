@@ -275,9 +275,9 @@ class Epay_Paycenter_Handler {
 			return wc_get_checkout_url();
 		}
 
-		$result_code = (string) $params['ResultCode'];
-		$status_flag = (string) $params['StatusFlag'];
-		$is_success  = '0' === $result_code && 'Success' === $status_flag;
+		// ResultCode is not covered by HashKey; only signed fields decide approval.
+		$is_success = 'Success' === $params['StatusFlag']
+			&& in_array( $params['ResponseCode'], array( '0', '00', '8', '08', '10', '16' ), true );
 
 		// Idempotency: once a successful callback has been processed for
 		// this order, its status and payment audit meta must never change
@@ -1080,7 +1080,7 @@ class Epay_Paycenter_Handler {
 	private function describe_failure( array $params ) {
 		$result_code = (string) $params['ResultCode'];
 
-		if ( '0' === $result_code ) {
+		if ( '0' === $result_code || '09' === $params['ResponseCode'] || 'Pending' === $params['StatusFlag'] ) {
 			return $this->describe_issuer_decline( $params );
 		}
 
@@ -1226,27 +1226,20 @@ class Epay_Paycenter_Handler {
 		$support              = (string) $params['SupportReferenceID'];
 		$is_iris              = Epay_Paycenter_Gateway::is_iris_payment_method( $params['CardType'], $params['PaymentMethod'] );
 
-		// IRIS ResponseCode 09 is NOT a decline. Redirection Manual §5 defines
-		// it as "an IRIS payment has been initiated but not completed": the
-		// customer started the transfer in their bank app and it may still
-		// settle through DIAS afterwards. Treating it as `failed` is what
-		// produced charged-but-failed orders - the money arrives, the order
-		// says the payment failed, and nothing reconciles the two. It belongs
-		// on-hold: stock stays reserved, the order stays open, and an operator
-		// (or, later, the reconciliation job) can settle it against the bank.
-		$is_iris_pending = ( $is_iris && '09' === strtoupper( $response_code ) );
+		// Method fields are unsigned. Only a trusted FOLLOW_UP can disambiguate
+		// a card decline from an IRIS transfer still in progress for code 09.
+		$is_pending = '09' === $response_code || 'Pending' === $params['StatusFlag'];
 
-		if ( $is_iris_pending ) {
-			$scenario_label = __( 'Paycenter §5: IRIS payment initiated but not completed (ResponseCode 09). Order placed ON HOLD, not failed - it may still settle. Reconcile against the bank before cancelling or refunding.', 'resilient-gateway-for-epay-paycenter' );
+		if ( $is_pending ) {
+			$scenario_label = __( 'Paycenter payment is not yet confirmed. Order placed on hold; check the bank result before cancelling or refunding.', 'resilient-gateway-for-epay-paycenter' );
 		} elseif ( $is_iris ) {
 			$scenario_label = __( 'Paycenter §5: IRIS payment decline.', 'resilient-gateway-for-epay-paycenter' );
 		} else {
 			$scenario_label = __( 'Paycenter §5: Issuer decline.', 'resilient-gateway-for-epay-paycenter' );
 		}
 
-		// Everything except the IRIS-pending case is a genuine decline.
-		$status      = $is_iris_pending ? 'on-hold' : 'failed';
-		$notice_type = $is_iris_pending ? 'notice' : 'error';
+		$status      = $is_pending ? 'on-hold' : 'failed';
+		$notice_type = $is_pending ? 'notice' : 'error';
 
 		$order_note = sprintf(
 			/* translators: 1: scenario label, 2: merchant reference, 3: response code, 4: response description, 5: support reference id. */
@@ -1257,6 +1250,17 @@ class Epay_Paycenter_Handler {
 			'' !== $response_description ? $response_description : '-',
 			'' !== $support ? $support : '-'
 		);
+
+		if ( $is_pending ) {
+			return array(
+				'order_note'  => $order_note,
+				'user_notice' => Epay_Paycenter_Reconciliation::is_enabled()
+					? __( 'Your payment is not yet confirmed. We will check its status automatically. Please do not pay again, or you may be charged twice. Contact us if you do not hear back.', 'resilient-gateway-for-epay-paycenter' )
+					: __( 'Your payment is not yet confirmed. Please contact us so we can check the payment with ePay. Do not pay again, or you may be charged twice.', 'resilient-gateway-for-epay-paycenter' ),
+				'status'      => $status,
+				'notice_type' => $notice_type,
+			);
+		}
 
 		// IRIS-specific ResponseCodes per Redirection Manual v2.9 §5
 		// (table "ResponseCode FREQUENT VALUES"). Same numeric code can
@@ -1273,18 +1277,6 @@ class Epay_Paycenter_Handler {
 					break;
 				case '06':
 					$user_notice = __( 'The IRIS payment could not be completed due to a technical issue. Please try again later or choose a different payment method.', 'resilient-gateway-for-epay-paycenter' );
-					break;
-				case '09':
-					// §5: "An IRIS payment has been initiated but not
-					// completed." The transfer may still settle, so the copy
-					// must NOT invite a retry: a customer who pays again
-					// while the first transfer is in flight gets charged
-					// twice, and IRIS refunds are not available through this
-					// integration (the bank returns ResponseCode 9167 for
-					// refund requests on IRIS transactions).
-					$user_notice = Epay_Paycenter_Reconciliation::is_enabled()
-						? __( 'Your IRIS payment has started but is not yet confirmed. We will check its status automatically. Please do not pay again, or you may be charged twice. Contact us if you do not hear back.', 'resilient-gateway-for-epay-paycenter' )
-						: __( 'Your IRIS payment has started but is not yet confirmed. Please contact us so we can check the payment with ePay. Do not pay again, or you may be charged twice.', 'resilient-gateway-for-epay-paycenter' );
 					break;
 				case '68':
 					// IRIS-specific timeout: customer did not scan / confirm

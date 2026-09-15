@@ -689,7 +689,7 @@ msgid "Payment could not be completed. Please try again or use a different payme
 msgstr ""
 
 #: includes/class-epay-paycenter-handler.php:1171
-msgid "Paycenter §5: IRIS payment initiated but not completed (ResponseCode 09). Order placed ON HOLD, not failed - it may still settle. Reconcile against the bank before cancelling or refunding."
+msgid "Paycenter payment is not yet confirmed. Order placed on hold; check the bank result before cancelling or refunding."
 msgstr ""
 
 #: includes/class-epay-paycenter-handler.php:1173
@@ -714,11 +714,11 @@ msgid "The IRIS payment could not be completed due to a technical issue. Please 
 msgstr ""
 
 #: includes/class-epay-paycenter-handler.php:1217
-msgid "Your IRIS payment has started but is not yet confirmed. We will check its status automatically. Please do not pay again, or you may be charged twice. Contact us if you do not hear back."
+msgid "Your payment is not yet confirmed. We will check its status automatically. Please do not pay again, or you may be charged twice. Contact us if you do not hear back."
 msgstr ""
 
 #: includes/class-epay-paycenter-handler.php:1218
-msgid "Your IRIS payment has started but is not yet confirmed. Please contact us so we can check the payment with ePay. Do not pay again, or you may be charged twice."
+msgid "Your payment is not yet confirmed. Please contact us so we can check the payment with ePay. Do not pay again, or you may be charged twice."
 msgstr ""
 
 #: includes/class-epay-paycenter-handler.php:1223

@@ -79,6 +79,11 @@ MerchantReference, the matching TranTicket, and a valid HMAC-SHA256 HashKey
 over the documented response fields before calling WooCommerce
 `payment_complete()`.
 
+Approval and pending decisions use signed `StatusFlag` and `ResponseCode`.
+`ResultCode`, `CardType` and `PaymentMethod` are not covered by the callback
+HashKey and must not override those decisions. Method fields are presentation
+metadata, not authenticated proof of the payment method.
+
 Every callback that changes an order requires a valid HashKey, including a
 decline. Paycenter can omit HashKey on documented declines; those responses
 leave the order unchanged because a MerchantReference identifies an attempt
@@ -105,11 +110,11 @@ customer to an order-aware retry page.
 
 ## IRIS and Google Pay
 
-IRIS is identified from the HMAC-verified response using the Paycenter
-CardType/PaymentMethod fields. IRIS ResponseCode `09` means initiated but not
-final: the order becomes on hold, the customer is told not to pay again, and
-the response is not treated as a decline. Other IRIS outcomes follow their
-provider response code.
+The callback's CardType/PaymentMethod fields label IRIS responses but are
+unsigned. ResponseCode `09` can mean an IRIS transfer is not final: regardless
+of the claimed method, the order becomes on hold and the customer is told not
+to pay again. Only a trusted server-to-server lookup may identify this as a
+definitive card decline. Signed `Pending` responses also stay on hold.
 
 Google Pay follows the normal card success path. A non-empty `PanCardType` of
 `FPAN` or `DPAN` is stored as provider-returned operational metadata and used

@@ -689,8 +689,8 @@ msgid "Payment could not be completed. Please try again or use a different payme
 msgstr "Η πληρωμή δεν ολοκληρώθηκε. Δοκιμάστε ξανά ή χρησιμοποιήστε διαφορετικό τρόπο πληρωμής."
 
 #: includes/class-epay-paycenter-handler.php:1171
-msgid "Paycenter §5: IRIS payment initiated but not completed (ResponseCode 09). Order placed ON HOLD, not failed - it may still settle. Reconcile against the bank before cancelling or refunding."
-msgstr "Paycenter §5: Η πληρωμή IRIS ξεκίνησε αλλά δεν ολοκληρώθηκε (ResponseCode 09). Η παραγγελία τέθηκε ΣΕ ΑΝΑΜΟΝΗ, δεν απέτυχε, καθώς μπορεί ακόμη να διεκπεραιωθεί. Επιβεβαιώστε με την τράπεζα πριν την ακυρώσετε ή προχωρήσετε σε επιστροφή χρημάτων."
+msgid "Paycenter payment is not yet confirmed. Order placed on hold; check the bank result before cancelling or refunding."
+msgstr "Η πληρωμή μέσω Paycenter δεν έχει επιβεβαιωθεί ακόμη. Η παραγγελία τέθηκε σε αναμονή· ελέγξτε το αποτέλεσμα στην τράπεζα πριν την ακυρώσετε ή επιστρέψετε χρήματα."
 
 #: includes/class-epay-paycenter-handler.php:1173
 msgid "Paycenter §5: IRIS payment decline."
@@ -714,12 +714,12 @@ msgid "The IRIS payment could not be completed due to a technical issue. Please 
 msgstr "Η πληρωμή IRIS δεν ολοκληρώθηκε λόγω τεχνικού προβλήματος. Δοκιμάστε ξανά αργότερα ή επιλέξτε άλλον τρόπο πληρωμής."
 
 #: includes/class-epay-paycenter-handler.php:1217
-msgid "Your IRIS payment has started but is not yet confirmed. We will check its status automatically. Please do not pay again, or you may be charged twice. Contact us if you do not hear back."
-msgstr "Η πληρωμή σας μέσω IRIS ξεκίνησε αλλά δεν έχει επιβεβαιωθεί ακόμη. Θα ελέγξουμε την κατάστασή της αυτόματα. Μην πληρώσετε ξανά, γιατί ενδέχεται να χρεωθείτε δύο φορές. Επικοινωνήστε μαζί μας αν δεν λάβετε ενημέρωση."
+msgid "Your payment is not yet confirmed. We will check its status automatically. Please do not pay again, or you may be charged twice. Contact us if you do not hear back."
+msgstr "Η πληρωμή σας δεν έχει επιβεβαιωθεί ακόμη. Θα ελέγξουμε την κατάστασή της αυτόματα. Μην πληρώσετε ξανά, γιατί ενδέχεται να χρεωθείτε δύο φορές. Επικοινωνήστε μαζί μας αν δεν λάβετε ενημέρωση."
 
 #: includes/class-epay-paycenter-handler.php:1218
-msgid "Your IRIS payment has started but is not yet confirmed. Please contact us so we can check the payment with ePay. Do not pay again, or you may be charged twice."
-msgstr "Η πληρωμή σας μέσω IRIS ξεκίνησε αλλά δεν έχει επιβεβαιωθεί ακόμη. Επικοινωνήστε μαζί μας για να ελέγξουμε την πληρωμή με την ePay. Μην πληρώσετε ξανά, γιατί ενδέχεται να χρεωθείτε δύο φορές."
+msgid "Your payment is not yet confirmed. Please contact us so we can check the payment with ePay. Do not pay again, or you may be charged twice."
+msgstr "Η πληρωμή σας δεν έχει επιβεβαιωθεί ακόμη. Επικοινωνήστε μαζί μας για να ελέγξουμε την πληρωμή με την ePay. Μην πληρώσετε ξανά, γιατί ενδέχεται να χρεωθείτε δύο φορές."
 
 #: includes/class-epay-paycenter-handler.php:1223
 msgid "The IRIS payment timed out. The QR code expires after 5 minutes. Please try again."

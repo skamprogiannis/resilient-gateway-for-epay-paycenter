@@ -510,8 +510,8 @@ for (const automaticRecovery of [false, true]) {
 
     await page.goto(response.headers().location);
     const expectedNotice = automaticRecovery
-      ? 'Your IRIS payment has started but is not yet confirmed. We will check its status automatically. Please do not pay again, or you may be charged twice. Contact us if you do not hear back.'
-      : 'Your IRIS payment has started but is not yet confirmed. Please contact us so we can check the payment with ePay. Do not pay again, or you may be charged twice.';
+      ? 'Your payment is not yet confirmed. We will check its status automatically. Please do not pay again, or you may be charged twice. Contact us if you do not hear back.'
+      : 'Your payment is not yet confirmed. Please contact us so we can check the payment with ePay. Do not pay again, or you may be charged twice.';
     await expect(page.getByText(expectedNotice, { exact: true })).toBeVisible();
     await expect(page.locator('#place_order')).toHaveCount(0);
     if (!automaticRecovery) {
@@ -626,6 +626,41 @@ test('@callback legacy plaintext credentials migrate once without changing bank 
     await setFixture(request, 'credential-migration', { action: 'restore' });
   }
 });
+
+test('@callback @signed-decisions unsigned ResultCode cannot turn a signed approval into a decline', async ({ request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  const payload = callbackPayload(order.order_id, attempt.MerchantReference, { ResponseCode: '00' });
+  payload.ResultCode = '1';
+  await sendCallback(request, CANONICAL_CALLBACK, payload);
+  const paid = await readOrder(request, order.order_id);
+  expect(paid.status).toBe('processing');
+  expect(paid.epay.payment_complete_count).toBe(1);
+  expect(paid.epay.follow_up[attempt.MerchantReference].state).toBe('paid');
+});
+
+for (const claimedMethod of ['Card', '']) {
+  test(`@callback @signed-decisions unsigned ${claimedMethod || 'unknown'} method cannot close a signed pending transfer`, async ({ request }) => {
+    const order = await createOrder(request);
+    const attempt = await issueAttempt(request, order);
+    await verifyAndEnableFollowUp(request, order);
+    const payload = callbackPayload(order.order_id, attempt.MerchantReference, {
+      StatusFlag: 'Failure', ResponseCode: '09', PaymentMethod: 'IRIS', CardType: '15',
+    });
+    payload.PaymentMethod = claimedMethod;
+    payload.CardType = claimedMethod === 'Card' ? 'VISA' : '';
+    payload.ResultCode = '1';
+    const response = await sendCallback(request, CANONICAL_CALLBACK, payload);
+    expect(response.headers().location).toContain(`/order-received/${order.order_id}/`);
+    const pending = await readOrder(request, order.order_id);
+    expect(pending.status).toBe('on-hold');
+    expect(pending.epay.ticket_statuses[attempt.MerchantReference]).toBe('pending');
+    expect(pending.epay.has_open_ticket_secrets).toBe(true);
+    const recovered = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+    expect(recovered.order.status).toBe('processing');
+    expect(recovered.order.epay.payment_complete_count).toBe(1);
+  });
+}
 
 for (const route of [CANONICAL_CALLBACK, LEGACY_CALLBACK]) {
   for (const paid of [false, true]) {
