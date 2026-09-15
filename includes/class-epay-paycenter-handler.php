@@ -148,21 +148,11 @@ class Epay_Paycenter_Handler {
 			$this->redirect_to_checkout();
 		}
 
-		// Log a compact "envelope" record early so that callbacks which bail
-		// out later (unknown order, reference mismatch, HashKey mismatch)
-		// still leave a forensic trail that can be correlated against the
-		// webserver access log and the host WAF / ModSecurity audit log. The
-		// envelope carries field NAMES only - never values - to keep the log
-		// noise-free and to avoid inadvertently writing the HashKey or any
-		// cardholder data a third-party proxy may have appended to the POST.
-		//
-		// Two guards bound the cost of this on a public, unauthenticated URL:
-		// requests carrying no MerchantReference at all (scanners, crawlers,
-		// someone opening the URL in a browser) are not worth an envelope
-		// line, and the rest draw from an hourly budget. See
-		// consume_log_budget().
+		// Correlate rejected arrivals without treating a claimed reference as authenticated.
+		// Only reference-shaped text is loggable; this does not change callback validation.
+		$claimed_reference = preg_match( '/\A[0-9]+(?:-[a-z0-9]+)?\z/i', $params['MerchantReference'] ) ? $params['MerchantReference'] : '[invalid reference]';
 		if ( '' !== (string) $params['MerchantReference'] && $this->consume_log_budget( 'envelope', self::LOG_BUDGET_ENVELOPE ) ) {
-			$this->log_callback_envelope( $params );
+			$this->log_callback_envelope( $params, $claimed_reference );
 		}
 
 		if ( empty( $params['MerchantReference'] ) ) {
@@ -201,7 +191,10 @@ class Epay_Paycenter_Handler {
 			if ( $this->consume_log_budget( 'anomaly', self::LOG_BUDGET_ANOMALY ) ) {
 				Epay_Paycenter_Logger::error(
 					'Callback for unknown / mismatched order',
-					array( 'order_id' => $order_id )
+					array(
+						'order_id'          => $order_id,
+						'claimed_reference' => $claimed_reference,
+					)
 				);
 			}
 			wp_safe_redirect( wc_get_checkout_url() );
@@ -231,7 +224,10 @@ class Epay_Paycenter_Handler {
 		if ( empty( $open_tickets ) ) {
 			Epay_Paycenter_Logger::debug(
 				'Callback received before ticket issuance; ignored to prevent unauthenticated status change.',
-				array( 'order_id' => $order_id )
+				array(
+					'order_id'          => $order_id,
+					'claimed_reference' => $claimed_reference,
+				)
 			);
 			wp_safe_redirect( wc_get_checkout_url() );
 			exit;
@@ -251,7 +247,10 @@ class Epay_Paycenter_Handler {
 			if ( $this->consume_log_budget( 'anomaly', self::LOG_BUDGET_ANOMALY ) ) {
 				Epay_Paycenter_Logger::error(
 					'MerchantReference mismatch on callback',
-					array( 'order_id' => $order_id )
+					array(
+						'order_id'          => $order_id,
+						'claimed_reference' => $claimed_reference,
+					)
 				);
 			}
 			wp_safe_redirect( wc_get_checkout_url() );
@@ -282,7 +281,10 @@ class Epay_Paycenter_Handler {
 			if ( $is_success ) {
 				Epay_Paycenter_Logger::info(
 					'Duplicate callback ignored - order already paid',
-					array( 'order_id' => $order_id )
+					array(
+						'order_id'          => $order_id,
+						'claimed_reference' => $claimed_reference,
+					)
 				);
 			} else {
 				$this->record_recharge_attempt( $order, $params, $tran_ticket );
@@ -299,7 +301,10 @@ class Epay_Paycenter_Handler {
 			if ( true !== $this->verify_nonsuccess_signature( $order, $params, $tran_ticket ) ) {
 				Epay_Paycenter_Logger::error(
 					'Non-success callback could not be authenticated; order state left unchanged.',
-					array( 'order_id' => $order_id )
+					array(
+						'order_id'          => $order_id,
+						'claimed_reference' => $claimed_reference,
+					)
 				);
 				wp_safe_redirect( $order->get_checkout_payment_url() );
 				exit;
@@ -332,18 +337,12 @@ class Epay_Paycenter_Handler {
 			// Deliver once, on the subsequent order-key-authenticated GET.
 			Epay_Paycenter_Order_Notices::queue( $order_id, $messages['user_notice'], $notice_type );
 
-			// Explicit "handler ran to completion" marker. If this line
-			// is visible in WooCommerce -> Status -> Logs for a given
-			// transaction but the customer saw "-1" or a blank page,
-			// the issue lies downstream (e.g. the pay-for-order URL is
-			// intercepted, or the Blocks checkout suppresses legacy
-			// notices). If this line is ABSENT, the callback POST
-			// never reached PHP at all (WAF / security plugin / wrong
-			// URL in Euronet portal).
+			// Handler completion does not prove the browser displayed its destination.
 			Epay_Paycenter_Logger::info(
 				'Paycenter non-success callback handled',
 				array(
 					'order_id'      => $order_id,
+					'reference'     => $received_reference,
 					'new_status'    => $new_status,
 					'result_code'   => $params['ResultCode'],
 					'response_code' => $params['ResponseCode'],
@@ -380,7 +379,10 @@ class Epay_Paycenter_Handler {
 		if ( '' === $tran_ticket ) {
 			Epay_Paycenter_Logger::error(
 				'No TranTicket stored for order',
-				array( 'order_id' => $order_id )
+				array(
+					'order_id'          => $order_id,
+					'claimed_reference' => $claimed_reference,
+				)
 			);
 			wp_safe_redirect( wc_get_checkout_url() );
 			exit;
@@ -391,7 +393,10 @@ class Epay_Paycenter_Handler {
 		if ( ! Epay_Paycenter_Hash::verify( $params['HashKey'], $verify_fields ) ) {
 			Epay_Paycenter_Logger::error(
 				'HashKey verification failed',
-				array( 'order_id' => $order_id )
+				array(
+					'order_id'          => $order_id,
+					'claimed_reference' => $claimed_reference,
+				)
 			);
 			wp_safe_redirect( wc_get_checkout_url() );
 			exit;
@@ -403,6 +408,7 @@ class Epay_Paycenter_Handler {
 			'Authenticated Paycenter callback received',
 			array(
 				'order_id'      => $order_id,
+				'reference'     => $received_reference,
 				'result_code'   => $params['ResultCode'],
 				'response_code' => $params['ResponseCode'],
 			)
@@ -471,13 +477,17 @@ class Epay_Paycenter_Handler {
 		} catch ( Throwable $error ) {
 			Epay_Paycenter_Logger::error(
 				'Authenticated Paycenter approval could not be persisted locally; reconciliation will retry it.',
-				array( 'order_id' => $order_id )
+				array(
+					'order_id'  => $order_id,
+					'reference' => $received_reference,
+				)
 			);
 			wp_safe_redirect( $this->gateway->get_return_url( $order ) );
 			exit;
 		}
 
 		WC()->cart->empty_cart();
+		Epay_Paycenter_Diagnostics::record( 'callback_completed', $order_id, $received_reference, array( 'order_status' => $order->get_status() ) );
 
 		wp_safe_redirect( $this->gateway->get_return_url( $order ) );
 		exit;
@@ -685,6 +695,7 @@ class Epay_Paycenter_Handler {
 			$order->update_status( 'cancelled', __( 'Customer cancelled the Paycenter payment.', 'resilient-gateway-for-epay-paycenter' ) );
 			$order->save();
 		}
+		Epay_Paycenter_Diagnostics::record( 'customer_cancelled', $order_id, $cancelled_reference, array( 'order_status' => $order->get_status() ) );
 
 		$cancel_notice = __( 'You cancelled the payment process. If your bank shows a charge, contact us before paying again.', 'resilient-gateway-for-epay-paycenter' );
 		Epay_Paycenter_Order_Notices::queue( $order_id, $cancel_notice, 'notice' );
@@ -950,13 +961,14 @@ class Epay_Paycenter_Handler {
 	}
 
 	/**
-	 * Log the callback envelope without recording callback values.
+	 * Log field names and the unverified reference, never authentication fields.
 	 *
-	 * @param array $params Raw callback parameters.
+	 * @param array  $params Raw callback parameters.
+	 * @param string $claimed_reference Bounded, unverified reference text.
 	 * @phpstan-param CallbackParams $params
 	 * @return void
 	 */
-	private function log_callback_envelope( array $params ) {
+	private function log_callback_envelope( array $params, string $claimed_reference ) {
 		$method = 'UNKNOWN';
 		// phpcs:disable WordPress.Security.NonceVerification.Missing,WordPress.Security.NonceVerification.Recommended
 		if ( isset( $_SERVER['REQUEST_METHOD'] ) && is_string( $_SERVER['REQUEST_METHOD'] ) ) {
@@ -975,9 +987,10 @@ class Epay_Paycenter_Handler {
 		Epay_Paycenter_Logger::info(
 			'Callback envelope',
 			array(
-				'method'         => $method,
-				'fields_present' => $fields_present,
-				'field_count'    => count( $fields_present ),
+				'method'            => $method,
+				'claimed_reference' => $claimed_reference,
+				'fields_present'    => $fields_present,
+				'field_count'       => count( $fields_present ),
 			)
 		);
 	}

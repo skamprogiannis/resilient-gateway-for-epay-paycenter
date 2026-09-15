@@ -3,6 +3,17 @@
 Notable changes to Resilient Gateway for ePay Paycenter are recorded here.
 Release artifacts and checksums belong in GitHub Releases.
 
+## Unreleased
+
+- Add optional, correlated receipt/browser handoff diagnostics to the existing
+  WooCommerce log, with expiring diagnostic-only authorization and bounded,
+  scrubbed reports. Reporting never determines payment state or gates submission.
+- Correlate ticket timing, callback decisions, customer returns and automatic
+  stock cancellation; include actual WordPress scheduling errors. Payment
+  authentication, order transitions and recovery timing are unchanged.
+- Cover diagnostic authorization, disabled logging, browser/reporting failures,
+  concurrent attempts and classic/Blocks handoffs using synthetic payments.
+
 ## 2.2.0 — 2026-09-13
 
 - Replace the order-list warning panel with a native WooCommerce review page,

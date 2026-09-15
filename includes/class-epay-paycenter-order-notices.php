@@ -41,6 +41,7 @@ final class Epay_Paycenter_Order_Notices {
 		if ( ! $order_id || ! self::has_order_key( $order_id ) ) {
 			return;
 		}
+		Epay_Paycenter_Diagnostics::record( 'checkout_return_requested', $order_id );
 		self::drain_payment_notice( $order_id );
 		// A lost bank-return session gets only this notice, never another cart's data.
 		$session = WC()->session;
@@ -108,6 +109,7 @@ final class Epay_Paycenter_Order_Notices {
 		if ( ! $order_id || ! self::has_order_key( $order_id ) ) {
 			return;
 		}
+		Epay_Paycenter_Diagnostics::record( 'payment_page_requested', $order_id );
 		self::drain_payment_notice( $order_id );
 	}
 
@@ -144,6 +146,7 @@ final class Epay_Paycenter_Order_Notices {
 		if ( ! $order_id || ! self::has_order_key( $order_id ) ) {
 			return;
 		}
+		Epay_Paycenter_Diagnostics::record( 'thankyou_requested', $order_id );
 
 		$key     = self::TRANSIENT_PREFIX . $order_id;
 		$pending = get_transient( $key );

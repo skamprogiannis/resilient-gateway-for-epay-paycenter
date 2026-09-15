@@ -100,7 +100,7 @@ class Epay_Paycenter_Logger {
 	 *
 	 * @return bool
 	 */
-	private static function debug_enabled() {
+	public static function debug_enabled(): bool {
 		if ( null !== self::$debug_enabled ) {
 			return self::$debug_enabled;
 		}

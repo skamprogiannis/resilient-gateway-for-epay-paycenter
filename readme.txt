@@ -39,6 +39,14 @@ completion or Paycenter refunds. Installment selection is available on classic
 checkout when enabled by the merchant agreement; Checkout Blocks uses one
 payment (`Installments=1`).
 
+Debug logging includes optional receipt and browser handoff observations in
+WooCommerce's `epay-paycenter` log. They use short-lived diagnostic-only
+authorization and never determine payment status or delay submission. Browser
+reports can be missing; compare payment disputes with the bank's final result.
+No separate checkout-investigation snippet is required for these observations.
+Existing detailed Ticketing logs may contain customer contact/address fields;
+keep exports private and use the site's log-retention policy.
+
 **Requirements:** You need an ePay Paycenter merchant agreement and the
 environment-specific credentials issued by Euronet Merchant Services. This
 plugin does not provide a Paycenter account or shared test credentials.

@@ -38,6 +38,10 @@ On 2026-09-11 the fork contributors added native review navigation, asynchronous
 and routine-only bulk acknowledgement, and read-only order evidence panels.
 These administrative changes do not alter the payment protocol or recovery decisions.
 
+On 2026-09-14 the fork contributors added optional receipt/browser handoff
+diagnostics and correlated callback, return, and scheduling records. These
+observations do not change payment decisions or recovery timing.
+
 ## Trademarks and services
 
 “ePay”, “Paycenter”, and “Piraeus Bank” are trademarks of Piraeus Bank S.A.

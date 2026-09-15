@@ -15,6 +15,8 @@ function epay_test_test_request_allowed() {
 		&& 'epay-qualification' === ( $_SERVER['HTTP_X_EPAY_TEST'] ?? '' );
 }
 
+require_once WP_PLUGIN_DIR . '/resilient-gateway-for-epay-paycenter/tests/fixtures/epay-test-diagnostics.php';
+
 add_filter(
 	'determine_locale',
 	static function ( $locale ) {

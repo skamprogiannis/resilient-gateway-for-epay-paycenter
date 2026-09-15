@@ -7,11 +7,16 @@
  * @var string                $post_url    Paycenter form POST URL.
  * @var array<string, string> $form_fields Hidden form fields keyed by name.
  * @var WC_Order              $order       Order.
+ * @var array<string,int|string>|null $diagnostic_context Reporting permission; never a bank credential.
  */
 
 defined( 'ABSPATH' ) || exit;
 ?>
-<div class="epay-paycenter-redirect">
+<div class="epay-paycenter-redirect"
+<?php
+if ( null !== $diagnostic_context ) :
+	?>
+	data-epay-diagnostics="<?php echo esc_attr( (string) wp_json_encode( $diagnostic_context ) ); ?>"<?php endif; ?>>
 	<p class="epay-paycenter-redirect__message">
 		<?php esc_html_e( 'Redirecting you to the Piraeus Bank secure payment page to complete your order. Please do not close or reload this page.', 'resilient-gateway-for-epay-paycenter' ); ?>
 	</p>

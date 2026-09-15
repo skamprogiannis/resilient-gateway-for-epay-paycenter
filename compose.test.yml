@@ -25,7 +25,7 @@ services:
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: qualification
       WORDPRESS_TABLE_PREFIX: wp_
-      WORDPRESS_DEBUG: "1"
+      WORDPRESS_DEBUG: "${EPAY_TEST_WP_DEBUG:-0}"
       WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
@@ -38,7 +38,7 @@ services:
     volumes: &wordpress-volumes
       - site:/var/www/html
       - ${EPAY_TEST_PLUGIN_SOURCE:-.}:/var/www/html/wp-content/plugins/resilient-gateway-for-epay-paycenter:ro
-      - ./tests/fixtures:/qualification-fixtures:ro
+      - ./tests/fixtures/setup.php:/qualification-fixtures/setup.php:ro
       - ./tests/fixtures/epay-test-safety.php:/var/www/html/wp-content/mu-plugins/epay-test-safety.php:ro
       - ./tests/fixtures/epay-test-http.php:/var/www/html/wp-content/mu-plugins/epay-test-http.php:ro
       - ./tests/fixtures/epay-test-api.php:/var/www/html/wp-content/mu-plugins/epay-test-api.php:ro

@@ -84,6 +84,7 @@ test.describe('checkout layouts', () => {
 
   for (const layout of ['classic', 'blocks']) {
     test(`@matrix ${layout} checkout submits a real cart through ePay`, async ({ page, request, fakePaycenter }) => {
+      await page.context().setExtraHTTPHeaders({ 'X-Epay-Test': 'epay-qualification', 'X-Epay-Test-Diagnostics': '1', 'X-Epay-Test-Diagnostics-Debug': 'yes' });
       const fixture = await setLayout(request, layout);
 
       await page.goto(fixture.add_to_cart_url);
@@ -117,7 +118,11 @@ test.describe('checkout layouts', () => {
       const handoff = fakePaycenter.submissions[0];
       const reference = handoff.get('MerchantReference');
       expect(reference).toMatch(/^\d+-[A-Z0-9]+$/);
-      for (const field of ['TranTicket', 'Password', 'HashKey']) expect(handoff.has(field)).toBe(false);
+      for (const field of ['TranTicket', 'Password', 'HashKey', 'authorization', 'trace_id']) expect(handoff.has(field)).toBe(false);
+      await expect.poll(async () => {
+        const response = await request.get('/wp-json/epay-test/v1/diagnostics/logs', { params: { reference } });
+        return (await response.json()).some(entry => entry.message.includes('"event":"submission_attempted"'));
+      }).toBe(true);
       const body = handoff.toString();
       const ticket = `TST${crypto.createHash('sha256').update(reference).digest('hex').slice(0, 29)}`;
       expect(body).not.toContain(ticket);

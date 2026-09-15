@@ -73,9 +73,10 @@ final class Epay_Paycenter_Reconciliation {
 		if ( wp_next_scheduled( self::CRON_HOOK ) ) {
 			return true;
 		}
-		$result = wp_schedule_single_event( time() + max( 10, (int) $delay ), self::CRON_HOOK, array(), true );
+		$due    = time() + max( 10, (int) $delay );
+		$result = wp_schedule_single_event( $due, self::CRON_HOOK, array(), true );
 		if ( is_wp_error( $result ) ) {
-			Epay_Paycenter_Logger::error( 'Could not schedule the ePay reconciliation worker.' );
+			Epay_Paycenter_Diagnostics::scheduling_error( 'Could not schedule the ePay reconciliation worker.', $result, self::CRON_HOOK, $due );
 			return false;
 		}
 		return true;
@@ -340,11 +341,15 @@ final class Epay_Paycenter_Reconciliation {
 		if ( $enabled ) {
 			$args = array( $order_id );
 			if ( ! wp_next_scheduled( self::STOCK_RELEASE_HOOK, $args ) ) {
-				$scheduled = wp_schedule_single_event( time() + ( self::stock_hold_minutes() * MINUTE_IN_SECONDS ), self::STOCK_RELEASE_HOOK, $args, true );
+				$due       = time() + ( self::stock_hold_minutes() * MINUTE_IN_SECONDS );
+				$scheduled = wp_schedule_single_event( $due, self::STOCK_RELEASE_HOOK, $args, true );
 				if ( is_wp_error( $scheduled ) ) {
-					Epay_Paycenter_Logger::error(
+					Epay_Paycenter_Diagnostics::scheduling_error(
 						'Could not schedule stock release for an ePay payment attempt.',
-						array( 'order_id' => $order_id )
+						$scheduled,
+						self::STOCK_RELEASE_HOOK,
+						$due,
+						$order_id
 					);
 				}
 			}
@@ -1015,7 +1020,7 @@ final class Epay_Paycenter_Reconciliation {
 		$due    = max( time() + 10, $created->getTimestamp() + self::stock_hold_minutes() * MINUTE_IN_SECONDS );
 		$result = wp_schedule_single_event( $due, self::STOCK_RELEASE_HOOK, $args, true );
 		if ( is_wp_error( $result ) ) {
-			Epay_Paycenter_Logger::error( 'Could not restore ePay stock release after activation.', array( 'order_id' => $order->get_id() ) );
+			Epay_Paycenter_Diagnostics::scheduling_error( 'Could not restore ePay stock release after activation.', $result, self::STOCK_RELEASE_HOOK, $due, $order->get_id() );
 		}
 	}
 
@@ -1038,11 +1043,15 @@ final class Epay_Paycenter_Reconciliation {
 		}
 		if ( ! empty( $result['lock_skipped'] ) || ! empty( $result['query_errors'] ) || ! empty( $result['settlement_errors'] ) ) {
 			$args      = array( $order->get_id() );
-			$scheduled = wp_schedule_single_event( time() + 300, self::STOCK_RELEASE_HOOK, $args, true );
+			$due       = time() + 300;
+			$scheduled = wp_schedule_single_event( $due, self::STOCK_RELEASE_HOOK, $args, true );
 			if ( is_wp_error( $scheduled ) ) {
-				Epay_Paycenter_Logger::error(
+				Epay_Paycenter_Diagnostics::scheduling_error(
 					'Could not retry ePay stock release after an inconclusive reconciliation.',
-					array( 'order_id' => $order->get_id() )
+					$scheduled,
+					self::STOCK_RELEASE_HOOK,
+					$due,
+					$order->get_id()
 				);
 			}
 			return;
@@ -1061,6 +1070,16 @@ final class Epay_Paycenter_Reconciliation {
 			)
 		);
 		$order->save();
+		Epay_Paycenter_Diagnostics::record(
+			'stock_reservation_expired',
+			$order->get_id(),
+			'',
+			array(
+				'hold_minutes' => self::stock_hold_minutes(),
+				'window_hours' => self::window_hours(),
+				'order_status' => $order->get_status(),
+			)
+		);
 	}
 
 	/**

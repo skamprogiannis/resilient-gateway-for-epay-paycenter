@@ -1075,7 +1075,8 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		}
 
 		$merchant_reference = $this->build_merchant_reference( $order );
-		$ticket             = $this->request_ticket( $order, $merchant_reference );
+		Epay_Paycenter_Diagnostics::record( 'receipt_started', (int) $order->get_id(), $merchant_reference );
+		$ticket = $this->request_ticket( $order, $merchant_reference );
 
 		if ( ! $ticket['success'] ) {
 			$this->render_ticket_error( $order, $ticket );
@@ -1107,7 +1108,8 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 
 		$template = EPAY_PAYCENTER_PLUGIN_DIR . 'templates/redirect-form.php';
 		if ( file_exists( $template ) ) {
-			$post_url = self::FORM_POST_URL;
+			$post_url           = self::FORM_POST_URL;
+			$diagnostic_context = Epay_Paycenter_Diagnostics::browser_context( (int) $order->get_id(), $merchant_reference );
 
 			$version = defined( 'EPAY_PAYCENTER_VERSION' ) ? EPAY_PAYCENTER_VERSION : false;
 			wp_enqueue_script(
@@ -1122,6 +1124,23 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			);
 
 			include $template; // phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
+			Epay_Paycenter_Diagnostics::record(
+				'redirect_rendered',
+				(int) $order->get_id(),
+				$merchant_reference,
+				array(
+					'trace_id'        => $diagnostic_context['trace_id'] ?? '',
+					'script_enqueued' => wp_script_is( 'epay-paycenter-redirect', 'enqueued' ),
+				)
+			);
+		} else {
+			Epay_Paycenter_Logger::error(
+				'ePay redirect template is missing.',
+				array(
+					'order_id'  => (int) $order->get_id(),
+					'reference' => $merchant_reference,
+				)
+			);
 		}
 	}
 
@@ -1271,8 +1290,10 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			Epay_Paycenter_Logger::debug( 'IssueNewTicket request', $logger_payload );
 		}
 
-		$client = new Epay_Paycenter_Ticketing();
-		$result = $client->issue_ticket( $request );
+		$client     = new Epay_Paycenter_Ticketing();
+		$started_at = microtime( true );
+		$result     = $client->issue_ticket( $request );
+		$elapsed_ms = (int) round( ( microtime( true ) - $started_at ) * 1000 );
 
 		// ResultCode 100 identifies invalid Ticketing credentials. Transport failures
 		// cannot establish a credential outage; successful issuance clears one.
@@ -1286,9 +1307,16 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			);
 		}
 
-		if ( 'yes' === $this->get_option( 'debug' ) ) {
-			Epay_Paycenter_Logger::debug( 'IssueNewTicket response', Epay_Paycenter_Logger::redact( $result ) );
-		}
+		Epay_Paycenter_Logger::debug(
+			'IssueNewTicket response',
+			Epay_Paycenter_Logger::redact(
+				$result + array(
+					'order_id'   => (int) $order->get_id(),
+					'reference'  => $merchant_reference,
+					'elapsed_ms' => $elapsed_ms,
+				)
+			)
+		);
 
 		return $result;
 	}

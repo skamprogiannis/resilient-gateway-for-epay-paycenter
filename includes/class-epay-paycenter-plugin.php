@@ -27,6 +27,7 @@ final class Epay_Paycenter_Plugin {
 
 		self::maybe_upgrade_db();
 		self::autoload();
+		Epay_Paycenter_Diagnostics::init();
 		add_action(
 			'woocommerce_order_status_cancelled',
 			array( 'Epay_Paycenter_Ticket_Audit', 'expire_pending_for_cancelled_order' )
@@ -314,6 +315,7 @@ final class Epay_Paycenter_Plugin {
 			'class-epay-paycenter-order-admin.php',
 			'class-epay-paycenter-open-tickets.php',
 			'class-epay-paycenter-logger.php',
+			'class-epay-paycenter-diagnostics.php',
 			'class-epay-paycenter-ticket-audit.php',
 			'class-epay-paycenter-countries.php',
 			'class-epay-paycenter-currencies.php',
