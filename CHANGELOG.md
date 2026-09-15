@@ -5,6 +5,8 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Block the bank handoff when its recovery audit record cannot be inserted.
+  Leave earlier attempts intact and offer a retry without changing order status.
 - Preserve stored bank approvals when an order becomes ineligible for local
   settlement. Deleted, trashed and refunded orders remain reviewable without
   querying away their confirmed payment evidence.

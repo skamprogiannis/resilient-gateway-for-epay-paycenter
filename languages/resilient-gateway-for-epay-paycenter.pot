@@ -445,6 +445,9 @@ msgstr ""
 msgid "Order not found."
 msgstr ""
 
+msgid "Payment could not be started. Please refresh this page to try again."
+msgstr ""
+
 #. translators: %s currency code
 #: includes/class-epay-paycenter-gateway.php:1228
 msgid "Currency %s is not supported by Paycenter."

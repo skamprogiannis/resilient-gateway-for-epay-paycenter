@@ -1083,6 +1083,11 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			return;
 		}
 
+		if ( ! $this->record_ticket_log( $order, $ticket['tran_ticket'], $merchant_reference ) ) {
+			wc_print_notice( __( 'Payment could not be started. Please refresh this page to try again.', 'resilient-gateway-for-epay-paycenter' ), 'error' );
+			return;
+		}
+
 		$order->update_meta_data( '_epay_tran_ticket', $ticket['tran_ticket'] );
 		$order->update_meta_data( '_epay_merchant_reference', $merchant_reference );
 
@@ -1091,8 +1096,6 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 
 		// Keep each attempt independently so concurrent receipts retain their secrets.
 		Epay_Paycenter_Open_Tickets::store( $order, $merchant_reference, $ticket['tran_ticket'], $cancel_token );
-
-		$this->record_ticket_log( $order, $ticket['tran_ticket'], $merchant_reference );
 
 		// TranTicket authenticates callbacks and must remain server-side.
 		// The bank resolves this form using MerchantReference and merchant credentials.
@@ -1198,15 +1201,16 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 	 * @param WC_Order $order       Order.
 	 * @param string   $tran_ticket Ticket.
 	 * @param string   $reference   Merchant reference.
+	 * @return bool Whether a durable recovery record exists for the handoff.
 	 */
-	private function record_ticket_log( $order, $tran_ticket, $reference ): void {
+	private function record_ticket_log( $order, $tran_ticket, $reference ): bool {
 		global $wpdb;
 		$table = $wpdb->prefix . 'epay_paycenter_tickets';
 
 		$now = gmdate( 'Y-m-d H:i:s' );
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange
-		$wpdb->insert(
+		$inserted = $wpdb->insert(
 			$table,
 			array(
 				'order_id'           => (int) $order->get_id(),
@@ -1227,7 +1231,18 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 		);
 		// phpcs:enable
 
+		if ( false === $inserted ) {
+			Epay_Paycenter_Logger::error(
+				'Could not persist the Paycenter payment attempt; bank handoff was blocked.',
+				array(
+					'order_id'  => (int) $order->get_id(),
+					'reference' => $reference,
+				)
+			);
+			return false;
+		}
 		Epay_Paycenter_Reconciliation::schedule_attempt( (int) $order->get_id(), $reference );
+		return true;
 	}
 
 	/**

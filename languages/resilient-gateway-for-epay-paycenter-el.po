@@ -445,6 +445,9 @@ msgstr "Σε αναμονή πληρωμής μέσω Paycenter."
 msgid "Order not found."
 msgstr "Η παραγγελία δεν βρέθηκε."
 
+msgid "Payment could not be started. Please refresh this page to try again."
+msgstr "Η πληρωμή δεν μπόρεσε να ξεκινήσει. Ανανεώστε τη σελίδα για να δοκιμάσετε ξανά."
+
 #. translators: %s currency code
 #: includes/class-epay-paycenter-gateway.php:1228
 msgid "Currency %s is not supported by Paycenter."

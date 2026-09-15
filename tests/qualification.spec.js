@@ -1035,6 +1035,27 @@ test('@attempt open secrets stay bounded while every issued ticket remains audit
   expect(Object.values(stored.epay.ticket_statuses)).toEqual(Array(6).fill('pending'));
 });
 
+test('@attempt @durable-ticket database failure prevents an untracked payment handoff without losing earlier attempts', async ({ request }) => {
+  const order = await createOrder(request);
+  const earlier = await issueAttempt(request, order);
+  const receipt = await request.get(order.receipt_url, { headers: { 'X-Epay-Test-Recovery-Scenario': 'ticket-insert-error' } });
+  expect(receipt.ok()).toBe(true);
+  const html = await receipt.text();
+  expect(html.includes('id="epay-paycenter-form"')).toBe(false);
+  expect(html).toContain('Payment could not be started. Please refresh this page to try again.');
+  const unchanged = await readOrder(request, order.order_id);
+  expect(unchanged.status).toBe('pending');
+  expect(unchanged.epay.ticket_rows).toBe(1);
+  expect(unchanged.epay.open_ticket_count).toBe(1);
+  const latest = await issueAttempt(request, order);
+  expect(latest.MerchantReference).not.toBe(earlier.MerchantReference);
+  const retried = await readOrder(request, order.order_id);
+  expect(retried.epay.ticket_rows).toBe(2);
+  expect(retried.epay.open_ticket_count).toBe(2);
+  await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, earlier.MerchantReference));
+  expect((await readOrder(request, order.order_id)).status).toBe('processing');
+});
+
 test('@attempt ticket issuance failure creates no misleading audit row', async ({ request }) => {
 	for (const resultCode of ['999', 'MALFORMED', 'OVERSIZED', 'THROW']) {
 	  await setFixture(request, 'fake-epay-result', { result_code: resultCode });

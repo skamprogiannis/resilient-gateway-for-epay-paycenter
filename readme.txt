@@ -271,6 +271,7 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 = Unreleased =
 
+* Stop checkout handoff if its payment-attempt record cannot be saved, preserving earlier attempts and allowing a retry.
 * Preserve confirmed bank approvals for deleted, trashed or refunded orders and keep them available for payment review.
 * Decide callback approval and pending outcomes from signed fields only. Keep ambiguous code 09 transfers open for bank verification regardless of the claimed payment method.
 * Require callback authentication before returning an order access URL, including for already-paid orders.

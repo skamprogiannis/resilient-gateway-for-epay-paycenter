@@ -50,6 +50,8 @@ Callback approval and pending decisions were restricted to signed fields on
 2026-09-15; unsigned method labels cannot terminate an unresolved transfer.
 The same day's recovery correction preserves approved bank evidence even
 when its order can no longer be settled locally.
+On 2026-09-15 the bank handoff was made conditional on persisting its payment
+attempt, so missing callbacks remain recoverable.
 
 ## Trademarks and services
 
