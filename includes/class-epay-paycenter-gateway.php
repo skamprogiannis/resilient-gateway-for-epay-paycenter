@@ -1074,6 +1074,12 @@ class Epay_Paycenter_Gateway extends WC_Payment_Gateway {
 			return;
 		}
 
+		if ( ! Epay_Paycenter_Order_Evidence::preserve_legacy_callback( $order ) ) {
+			Epay_Paycenter_Logger::error( 'Could not preserve legacy callback evidence before issuing a retry.', array( 'order_id' => $order->get_id() ) );
+			wc_print_notice( __( 'Payment could not be started. Please refresh this page to try again.', 'resilient-gateway-for-epay-paycenter' ), 'error' );
+			return;
+		}
+
 		$merchant_reference = $this->build_merchant_reference( $order );
 		Epay_Paycenter_Diagnostics::record( 'receipt_started', (int) $order->get_id(), $merchant_reference );
 		$ticket = $this->request_ticket( $order, $merchant_reference );

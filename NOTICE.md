@@ -62,6 +62,8 @@ The same day's recovery reread was restricted to the queried attempt IDs so
 older deferred attempts cannot displace a newer confirmed result.
 Native WooCommerce timed cancellation was included in the order-lock boundary
 on 2026-09-15 without changing stock-hold durations or other gateways.
+The same day's evidence upgrade preserves still-bound shared callback metadata
+before a new receipt replaces its reference.
 
 ## Trademarks and services
 

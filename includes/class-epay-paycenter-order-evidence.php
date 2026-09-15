@@ -31,6 +31,48 @@ final class Epay_Paycenter_Order_Evidence {
 	}
 
 	/**
+	 * Preserve still-bound shared metadata before a receipt replaces its reference.
+	 *
+	 * @param WC_Order $order Receipt order.
+	 * @return bool Whether the receipt can safely replace the shared reference.
+	 */
+	public static function preserve_legacy_callback( WC_Order $order ): bool {
+		$reference = (string) $order->get_meta( '_epay_merchant_reference', true );
+		if ( '' === $reference || '' === (string) $order->get_meta( '_epay_last_callback_at', true )
+			|| null !== self::callback_evidence( $order, $reference, false ) ) {
+			return true;
+		}
+		$order_id = $order->get_id();
+		if ( ! Epay_Paycenter_Order_Lock::acquire( $order_id ) ) {
+			return false;
+		}
+		try {
+			$order = Epay_Paycenter_Order_Lock::read_order( $order_id );
+			if ( ! $order instanceof WC_Order ) {
+				return false;
+			}
+			$reference = (string) $order->get_meta( '_epay_merchant_reference', true );
+			if ( '' === $reference || null !== self::callback_evidence( $order, $reference, false ) ) {
+				return true;
+			}
+			global $wpdb;
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+			$source = $wpdb->get_var( $wpdb->prepare( 'SELECT resolution_source FROM %i WHERE order_id = %d AND merchant_reference = %s', $wpdb->prefix . 'epay_paycenter_tickets', $order_id, $reference ) );
+			if ( '' !== $wpdb->last_error ) {
+				return false;
+			}
+			$evidence = self::callback_evidence( $order, $reference, 'callback' === $source );
+			if ( null !== $evidence ) {
+				self::record_callback( $order, $reference, $evidence );
+				$order->save_meta_data();
+			}
+			return true;
+		} finally {
+			Epay_Paycenter_Order_Lock::release( $order_id );
+		}
+	}
+
+	/**
 	 * Read an independent snapshot or provably matching pre-upgrade metadata.
 	 *
 	 * @param WC_Order $order Current order.

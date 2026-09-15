@@ -271,6 +271,7 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 = Unreleased =
 
+* Preserve matching callback history from older versions before starting a new payment attempt.
 * Prevent WooCommerce's unpaid-order timer from overwriting a concurrent successful payment; retain existing stock-hold durations.
 * Recover newer due attempts even when older attempts are waiting for later checks.
 * Keep activation usable when recovery scheduling fails, with the actual scheduling error logged.

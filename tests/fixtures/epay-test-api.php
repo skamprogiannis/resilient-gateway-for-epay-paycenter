@@ -809,6 +809,18 @@ function epay_test_seed_legacy_open_ticket( $request ) {
 	return array( 'order' => epay_test_describe_order( wc_get_order( $order->get_id() ) ) );
 }
 
+/** Retain only the shared callback fields used by the previous release. */
+function epay_test_seed_legacy_callback_evidence( $request ) {
+	$order = wc_get_order( (int) $request['id'] );
+	if ( ! $order instanceof WC_Order ) {
+		return new WP_Error( 'epay_test_order_not_found', 'Order not found.', array( 'status' => 404 ) );
+	}
+	$reference = (string) $order->get_meta( '_epay_merchant_reference', true );
+	$order->delete_meta_data( '_epay_callback_evidence_' . $reference );
+	$order->save();
+	return array( 'reference' => $reference );
+}
+
 function epay_test_legacy_callback_compatibility_state() {
 	$normalized_hook = 'woocommerce_api_wc_piraeusbank_gateway';
 	$mixed_case_hook = 'woocommerce_api_WC_Piraeusbank_Gateway';
@@ -952,6 +964,7 @@ add_action(
 		register_rest_route( 'epay-test/v1', '/gateway-icon', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_gateway_icon_state' ) );
 		register_rest_route( 'epay-test/v1', '/credential-notice', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_credential_notice_state' ) );
 		register_rest_route( 'epay-test/v1', '/legacy-open-ticket/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_seed_legacy_open_ticket' ) );
+		register_rest_route( 'epay-test/v1', '/legacy-callback-evidence/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_seed_legacy_callback_evidence' ) );
 		register_rest_route( 'epay-test/v1', '/legacy-callback-compatibility', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_legacy_callback_compatibility_state' ) );
 		register_rest_route( 'epay-test/v1', '/callback-ip-policy', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_set_callback_ip_policy' ) );
 		register_rest_route( 'epay-test/v1', '/credential-migration', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_run_credential_migration_fixture' ) );
