@@ -1,6 +1,6 @@
 <?php
 /**
- * Read-only, non-secret payment evidence for order administration.
+ * Non-secret payment evidence for read-only order administration.
  *
  * @package EpayPaycenter
  */
@@ -11,8 +11,56 @@ defined( 'ABSPATH' ) || exit;
  * Binds transaction identifiers to their attempt and source before linking out.
  *
  * @phpstan-type OrderEvidence array{reference:string, issued_at:string, amount:string, currency_code:int, bank_status:string, response_code:string, method:string, last_checked:string, recovery_state:string, detail_url:string, search_url:string, settled:bool}
+ * @phpstan-type CallbackEvidence array{bank_status:string, response_code:string, method:string, transaction_id:string}
  */
 final class Epay_Paycenter_Order_Evidence {
+
+	private const CALLBACK_META_PREFIX = '_epay_callback_evidence_';
+
+	/**
+	 * Bind display fields to one authenticated callback, not the latest receipt.
+	 * The callback owner saves the order; this snapshot never decides payment.
+	 *
+	 * @param WC_Order $order Callback order.
+	 * @param string   $reference Authenticated reference.
+	 * @param array    $evidence Non-secret display fields; method and ID are unsigned.
+	 * @phpstan-param CallbackEvidence $evidence
+	 */
+	public static function record_callback( WC_Order $order, string $reference, array $evidence ): void {
+		$order->update_meta_data( self::CALLBACK_META_PREFIX . $reference, $evidence );
+	}
+
+	/**
+	 * Read an independent snapshot or provably matching pre-upgrade metadata.
+	 *
+	 * @param WC_Order $order Current order.
+	 * @param string   $reference Attempt reference.
+	 * @param bool     $legacy_match Whether audit provenance binds old metadata.
+	 * @return CallbackEvidence|null
+	 */
+	private static function callback_evidence( WC_Order $order, string $reference, bool $legacy_match ): ?array {
+		$stored = $order->get_meta( self::CALLBACK_META_PREFIX . $reference, true );
+		if ( is_array( $stored )
+			&& isset( $stored['bank_status'], $stored['response_code'], $stored['method'], $stored['transaction_id'] )
+			&& is_string( $stored['bank_status'] ) && is_string( $stored['response_code'] )
+			&& is_string( $stored['method'] ) && is_string( $stored['transaction_id'] ) ) {
+			return array(
+				'bank_status'    => $stored['bank_status'],
+				'response_code'  => $stored['response_code'],
+				'method'         => $stored['method'],
+				'transaction_id' => $stored['transaction_id'],
+			);
+		}
+		if ( ! $legacy_match || '' === (string) $order->get_meta( '_epay_last_callback_at', true ) ) {
+			return null;
+		}
+		return array(
+			'bank_status'    => (string) $order->get_meta( '_epay_status_flag', true ),
+			'response_code'  => (string) $order->get_meta( '_epay_response_code', true ),
+			'method'         => (string) $order->get_meta( '_epay_payment_method', true ),
+			'transaction_id' => (string) $order->get_meta( '_epay_transaction_id', true ),
+		);
+	}
 
 	/**
 	 * Query only displayable fields, never ticket or cancellation secrets.
@@ -24,7 +72,7 @@ final class Epay_Paycenter_Order_Evidence {
 	public static function for_order( WC_Order $order ): array {
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT merchant_reference, created_at, amount, currency_code, follow_up_state, last_checked_at, follow_up_result_code, follow_up_response_code, follow_up_status_flag, follow_up_transaction_id, follow_up_payment_method FROM %i WHERE order_id = %d ORDER BY id DESC', $wpdb->prefix . 'epay_paycenter_tickets', $order->get_id() ), ARRAY_A );
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT merchant_reference, created_at, amount, currency_code, follow_up_state, resolution_source, last_checked_at, follow_up_result_code, follow_up_response_code, follow_up_status_flag, follow_up_transaction_id, follow_up_payment_method FROM %i WHERE order_id = %d ORDER BY id DESC', $wpdb->prefix . 'epay_paycenter_tickets', $order->get_id() ), ARRAY_A );
 		if ( '' !== $wpdb->last_error || ! is_array( $rows ) ) {
 			throw new RuntimeException( 'Could not read order payment evidence.' );
 		}
@@ -39,9 +87,10 @@ final class Epay_Paycenter_Order_Evidence {
 		foreach ( $rows as $row ) {
 			$reference = (string) $row['merchant_reference'];
 			$matches   = '' !== $meta_reference && hash_equals( $meta_reference, $reference );
+			$callback  = self::callback_evidence( $order, $reference, $matches && 'callback' === ( $row['resolution_source'] ?? '' ) );
 			$method    = (string) ( $row['follow_up_payment_method'] ?? '' );
-			if ( '' === $method && $matches ) {
-				$method = (string) $order->get_meta( '_epay_payment_method', true );
+			if ( '' === $method && null !== $callback ) {
+				$method = $callback['method'];
 			}
 			$method         = in_array( strtolower( $method ), array( 'card', 'iris' ), true ) ? strtolower( $method ) : '';
 			$bank_status    = (string) ( $row['follow_up_status_flag'] ?? '' );
@@ -51,11 +100,11 @@ final class Epay_Paycenter_Order_Evidence {
 			if ( $has_follow_up ) {
 				// FOLLOW_UP carries the AdminTool ID, unlike the long IRIS callback ID.
 				$transaction_id = (string) ( $row['follow_up_transaction_id'] ?? '' );
-			} elseif ( $matches ) {
-				$bank_status   = (string) $order->get_meta( '_epay_status_flag', true );
-				$response_code = (string) $order->get_meta( '_epay_response_code', true );
-				if ( 'card' === $method && '' !== (string) $order->get_meta( '_epay_last_callback_at', true ) ) {
-					$transaction_id = (string) $order->get_meta( '_epay_transaction_id', true );
+			} elseif ( null !== $callback ) {
+				$bank_status   = $callback['bank_status'];
+				$response_code = $callback['response_code'];
+				if ( 'card' === $method ) {
+					$transaction_id = $callback['transaction_id'];
 				}
 			}
 			$detail_url = '';

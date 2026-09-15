@@ -5,6 +5,9 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Keep callback display evidence per payment attempt so a new receipt cannot
+  inherit another attempt's bank result or transaction link. Show older shared
+  metadata only when its reference and audit provenance match.
 - Block the bank handoff when its recovery audit record cannot be inserted.
   Leave earlier attempts intact and offer a retry without changing order status.
 - Preserve stored bank approvals when an order becomes ineligible for local

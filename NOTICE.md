@@ -52,6 +52,8 @@ The same day's recovery correction preserves approved bank evidence even
 when its order can no longer be settled locally.
 On 2026-09-15 the bank handoff was made conditional on persisting its payment
 attempt, so missing callbacks remain recoverable.
+On 2026-09-15 the order panel's callback evidence was stored independently per
+attempt, with conservative matching for pre-upgrade shared metadata.
 
 ## Trademarks and services
 

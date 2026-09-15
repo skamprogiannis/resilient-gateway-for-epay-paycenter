@@ -1639,6 +1639,27 @@ test('@followup reports a paid permanently deleted order without recreating it',
   expect(checked.ticket_statuses).toEqual({ [attempt.MerchantReference]: 'succeeded' });
 });
 
+test('@review @order-evidence @attempt-evidence a retry never inherits another attempt callback', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const earlier = await issueAttempt(request, order);
+  await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, earlier.MerchantReference, { StatusFlag: 'Failure', ResponseCode: '05' }));
+  const latest = await issueAttempt(request, order);
+  await loginAsLocalAdmin(page);
+  await page.goto(`/wp-admin/post.php?post=${order.order_id}&action=edit`);
+  const panel = page.locator('#epay-order-payment');
+  const pending = panel.locator('.epay-attempt').filter({ hasText: latest.MerchantReference });
+  const declined = panel.locator('.epay-attempt').filter({ hasText: earlier.MerchantReference });
+  await expect(pending.locator('dt').filter({ hasText: 'Recorded bank response' }).locator('+ dd')).toHaveText('Not recorded');
+  await expect(pending.getByRole('link', { name: 'View transaction' })).toHaveCount(0);
+  await panel.getByText('Earlier attempts', { exact: false }).click();
+  await expect(declined).toContainText('Failure / 05');
+  await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, latest.MerchantReference, { ResponseCode: '00' }));
+  await page.reload();
+  await expect(pending).toContainText('Success / 00');
+  await panel.getByText('Earlier attempts', { exact: false }).click();
+  await expect(declined).toContainText('Failure / 05');
+});
+
 test('@review @order-evidence order panel preserves retry references and links only a known card transaction', async ({ page, request }) => {
   const order = await createOrder(request);
   const earlier = await issueAttempt(request, order);

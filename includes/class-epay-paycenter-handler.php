@@ -878,6 +878,16 @@ class Epay_Paycenter_Handler {
 	 * @return void
 	 */
 	private function persist_callback_metadata( $order, array $params ) {
+		Epay_Paycenter_Order_Evidence::record_callback(
+			$order,
+			$params['MerchantReference'],
+			array(
+				'bank_status'    => $params['StatusFlag'],
+				'response_code'  => $params['ResponseCode'],
+				'method'         => $params['PaymentMethod'],
+				'transaction_id' => $params['TransactionId'],
+			)
+		);
 		$meta = array(
 			'_epay_support_reference_id' => 'SupportReferenceID',
 			'_epay_merchant_reference'   => 'MerchantReference',
