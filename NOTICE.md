@@ -44,6 +44,8 @@ observations do not change payment decisions or recovery timing.
 
 On 2026-09-15 the fork contributors coordinated callback, recovery and stock
 release writes to preserve paid orders during overlapping requests.
+The same date's callback privacy fix requires authentication before returning
+keyed order URLs, including for already-paid orders.
 
 ## Trademarks and services
 

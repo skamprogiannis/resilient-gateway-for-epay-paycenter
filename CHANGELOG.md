@@ -5,6 +5,8 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Do not disclose keyed order URLs on unauthenticated callbacks, including
+  callbacks for already-paid orders and rejected decline responses.
 - Coordinate callback, recovery and stock-release mutations with a shared
   database lock and fresh order reads. Bank lookups run outside that lock;
   completed callbacks cannot be overwritten by an older recovery result.

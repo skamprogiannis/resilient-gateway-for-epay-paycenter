@@ -271,6 +271,7 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 = Unreleased =
 
+* Require callback authentication before returning an order access URL, including for already-paid orders.
 * Preserve successful callbacks during overlapping recovery and stock-release work by coordinating local order writes and reloading current payment evidence.
 
 = 2.2.0 =

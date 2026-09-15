@@ -627,6 +627,30 @@ test('@callback legacy plaintext credentials migrate once without changing bank 
   }
 });
 
+for (const route of [CANONICAL_CALLBACK, LEGACY_CALLBACK]) {
+  for (const paid of [false, true]) {
+    test(`@callback @callback-privacy unauthenticated ${route} callback cannot disclose an order key, paid ${paid}`, async ({ request, playwright }) => {
+      const order = await createOrder(request);
+      const attempt = await issueAttempt(request, order);
+      if (paid) await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, attempt.MerchantReference));
+      const before = await readOrder(request, order.order_id);
+      const anonymous = await playwright.request.newContext({ baseURL: test.info().project.use.baseURL });
+      try {
+        const response = await sendCallback(anonymous, route, callbackPayload(order.order_id, attempt.MerchantReference, {
+          StatusFlag: paid ? 'Success' : 'Failure', ResponseCode: paid ? '00' : '05', HashKey: '',
+        }));
+        expect(response.status()).toBe(302);
+        const destination = new URL(response.headers().location);
+        expect(destination.searchParams.has('key')).toBe(false);
+        expect(destination.pathname).not.toMatch(/order-(received|pay)/);
+        expect(await readOrder(request, order.order_id)).toEqual(before);
+      } finally {
+        await anonymous.dispose();
+      }
+    });
+  }
+}
+
 test('@callback invalid success HashKey cannot mutate the order', async ({ request }) => {
   const order = await createOrder(request);
   const attempt = await issueAttempt(request, order);

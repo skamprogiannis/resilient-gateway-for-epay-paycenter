@@ -97,7 +97,10 @@ before applying results. A response already superseded by a completed callback
 cannot demote that payment. Lock contention is retryable; it is not a decline.
 
 An invalid signature or missing matching TranTicket leaves order status and
-metadata unchanged. Authenticated declines become failed and return the
+metadata unchanged and returns only a generic checkout URL, without the order
+access key. This also applies to replays after one-time secrets have been
+cleared; knowledge of a MerchantReference alone never authorizes order access.
+Authenticated declines become failed and return the
 customer to an order-aware retry page.
 
 ## IRIS and Google Pay

@@ -296,6 +296,10 @@ class Epay_Paycenter_Handler {
 		// message on the user page - handled by
 		// record_recharge_attempt().
 		if ( $order->is_paid() ) {
+			// A known reference is not authorization to disclose the order's bearer key.
+			if ( true !== $this->verify_nonsuccess_signature( $order, $params, $tran_ticket ) ) {
+				return wc_get_checkout_url();
+			}
 			if ( $is_success ) {
 				Epay_Paycenter_Logger::info(
 					'Duplicate callback ignored - order already paid',
@@ -323,7 +327,7 @@ class Epay_Paycenter_Handler {
 						'claimed_reference' => $claimed_reference,
 					)
 				);
-				return $order->get_checkout_payment_url();
+				return wc_get_checkout_url();
 			}
 
 			$params = $this->sanitize_callback_params( $params );
