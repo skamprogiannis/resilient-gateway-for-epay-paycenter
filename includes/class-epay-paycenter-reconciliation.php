@@ -507,12 +507,57 @@ final class Epay_Paycenter_Reconciliation {
 			return $summary;
 		}
 
+		$payment_locked = false;
 		try {
 			$rows = self::rows_for_order( $order_id, $force );
 			if ( empty( $rows ) ) {
 				return $summary;
 			}
-			$order = wc_get_order( $order_id );
+			$payment_locked = Epay_Paycenter_Order_Lock::acquire( $order_id );
+			if ( ! $payment_locked ) {
+				$summary['lock_skipped'] = 1;
+				return $summary;
+			}
+			$order      = Epay_Paycenter_Order_Lock::read_order( $order_id );
+			$can_mutate = $order instanceof WC_Order
+				&& EPAY_PAYCENTER_GATEWAY_ID === $order->get_payment_method()
+				&& ( $order->is_paid() || $order->has_status( array( 'pending', 'on-hold', 'failed', 'cancelled' ) ) );
+			if ( $can_mutate && self::has_local_payment_provenance( $order )
+				&& '' === (string) $order->get_meta( '_epay_follow_up_settled_reference', true ) ) {
+				self::mark_locally_paid( $order, $rows );
+				$summary['local_paid'] = count( $rows );
+				return $summary;
+			}
+			Epay_Paycenter_Order_Lock::release( $order_id );
+			$payment_locked = false;
+
+			// Bank I/O must not prevent a callback from recording its approval.
+			$client  = Epay_Paycenter_Follow_Up::from_settings();
+			$results = array();
+			foreach ( $rows as $row ) {
+				$results[ $row['id'] ] = $can_mutate && 'paid_unsettled' === $row['follow_up_state']
+					? self::bank_result_from_row( $row )
+					: $client->query( $row['merchant_reference'], $channel );
+			}
+			$payment_locked = Epay_Paycenter_Order_Lock::acquire( $order_id );
+			if ( ! $payment_locked ) {
+				$summary['lock_skipped'] = 1;
+				return $summary;
+			}
+			$order = Epay_Paycenter_Order_Lock::read_order( $order_id );
+			// A callback may have resolved an attempt while its lookup was in flight.
+			$rows = array_values(
+				array_filter(
+					self::rows_for_order( $order_id, true ),
+					static function ( array $row ) use ( $results ): bool {
+						return isset( $results[ $row['id'] ] );
+					}
+				)
+			);
+			if ( empty( $rows ) ) {
+				$summary['unresolved'] = self::unresolved_count( $order_id );
+				return $summary;
+			}
 			if ( $order instanceof WC_Order ) {
 				self::restore_stock_release( $order );
 			}
@@ -520,10 +565,9 @@ final class Epay_Paycenter_Reconciliation {
 				&& EPAY_PAYCENTER_GATEWAY_ID === $order->get_payment_method()
 				&& ( $order->is_paid() || $order->has_status( array( 'pending', 'on-hold', 'failed', 'cancelled' ) ) );
 			if ( ! $can_mutate || 'trash' === $order->get_status() ) {
-				$client = Epay_Paycenter_Follow_Up::from_settings();
-				$paid   = 0;
+				$paid = 0;
 				foreach ( $rows as $row ) {
-					$result = $client->query( (string) $row['merchant_reference'], $channel );
+					$result = $results[ $row['id'] ];
 					self::store_result( $row, $result );
 					$state = (string) $result['state'];
 					if ( 'paid' === $state ) {
@@ -559,13 +603,10 @@ final class Epay_Paycenter_Reconciliation {
 				return $summary;
 			}
 
-			$client       = Epay_Paycenter_Follow_Up::from_settings();
 			$paid_results = array();
 			$all_declined = true;
 			foreach ( $rows as $row ) {
-				$result = 'paid_unsettled' === (string) $row['follow_up_state']
-					? self::bank_result_from_row( $row )
-					: $client->query( (string) $row['merchant_reference'], $channel );
+				$result = $results[ $row['id'] ];
 				$state  = (string) $result['state'];
 				if ( 'paid' === $state ) {
 					++$summary['paid'];
@@ -654,6 +695,9 @@ final class Epay_Paycenter_Reconciliation {
 			);
 			return $summary;
 		} finally {
+			if ( $payment_locked ) {
+				Epay_Paycenter_Order_Lock::release( $order_id );
+			}
 			self::release_lock( $order_id );
 		}
 	}
@@ -1041,6 +1085,10 @@ final class Epay_Paycenter_Reconciliation {
 		if ( ! empty( $result['paid'] ) ) {
 			return;
 		}
+		if ( empty( $result['lock_skipped'] ) && empty( $result['query_errors'] ) && empty( $result['settlement_errors'] )
+			&& ! Epay_Paycenter_Order_Lock::acquire( $order->get_id() ) ) {
+			$result['lock_skipped'] = 1;
+		}
 		if ( ! empty( $result['lock_skipped'] ) || ! empty( $result['query_errors'] ) || ! empty( $result['settlement_errors'] ) ) {
 			$args      = array( $order->get_id() );
 			$due       = time() + 300;
@@ -1056,30 +1104,35 @@ final class Epay_Paycenter_Reconciliation {
 			}
 			return;
 		}
-		$order = wc_get_order( $order->get_id() );
-		if ( ! $order instanceof WC_Order || $order->is_paid() || ! $order->has_status( array( 'pending', 'on-hold' ) ) ) {
-			return;
+		$order_id = $order->get_id();
+		try {
+			$order = Epay_Paycenter_Order_Lock::read_order( $order_id );
+			if ( ! $order instanceof WC_Order || $order->is_paid() || ! $order->has_status( array( 'pending', 'on-hold' ) ) ) {
+				return;
+			}
+			$order->update_status(
+				'cancelled',
+				sprintf(
+					/* translators: 1: stock reservation in minutes, 2: bank-recheck window in hours. */
+					__( 'ePay payment was not confirmed within the %1$d-minute stock reservation. The bank-recheck window is %2$d hours from each payment attempt.', 'resilient-gateway-for-epay-paycenter' ),
+					self::stock_hold_minutes(),
+					self::window_hours()
+				)
+			);
+			$order->save();
+			Epay_Paycenter_Diagnostics::record(
+				'stock_reservation_expired',
+				$order->get_id(),
+				'',
+				array(
+					'hold_minutes' => self::stock_hold_minutes(),
+					'window_hours' => self::window_hours(),
+					'order_status' => $order->get_status(),
+				)
+			);
+		} finally {
+			Epay_Paycenter_Order_Lock::release( $order_id );
 		}
-		$order->update_status(
-			'cancelled',
-			sprintf(
-				/* translators: 1: stock reservation in minutes, 2: bank-recheck window in hours. */
-				__( 'ePay payment was not confirmed within the %1$d-minute stock reservation. The bank-recheck window is %2$d hours from each payment attempt.', 'resilient-gateway-for-epay-paycenter' ),
-				self::stock_hold_minutes(),
-				self::window_hours()
-			)
-		);
-		$order->save();
-		Epay_Paycenter_Diagnostics::record(
-			'stock_reservation_expired',
-			$order->get_id(),
-			'',
-			array(
-				'hold_minutes' => self::stock_hold_minutes(),
-				'window_hours' => self::window_hours(),
-				'order_status' => $order->get_status(),
-			)
-		);
 	}
 
 	/**

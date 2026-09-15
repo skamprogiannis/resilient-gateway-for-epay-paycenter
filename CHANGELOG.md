@@ -5,6 +5,9 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Coordinate callback, recovery and stock-release mutations with a shared
+  database lock and fresh order reads. Bank lookups run outside that lock;
+  completed callbacks cannot be overwritten by an older recovery result.
 - Add optional, correlated receipt/browser handoff diagnostics to the existing
   WooCommerce log, with expiring diagnostic-only authorization and bounded,
   scrubbed reports. Reporting never determines payment state or gates submission.

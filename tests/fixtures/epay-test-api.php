@@ -482,6 +482,44 @@ function epay_test_run_follow_up( $request ) {
 	);
 }
 
+/** Deliver a real callback while an older bank lookup is in flight. */
+function epay_test_overlap_follow_up( $request ) {
+	global $wpdb;
+	$order_id = (int) $request['id'];
+	$reference = (string) $request->get_param( 'reference' );
+	$callback = (array) $request->get_param( 'callback' );
+	$wpdb->update( $wpdb->prefix . 'epay_paycenter_tickets',
+		array( 'next_check_at' => gmdate( 'Y-m-d H:i:s', time() + 600 ) ), array( 'order_id' => $order_id ) );
+	$wpdb->update( $wpdb->prefix . 'epay_paycenter_tickets',
+		array( 'next_check_at' => '2000-01-01 00:00:00' ), array( 'order_id' => $order_id, 'merchant_reference' => $reference ) );
+	$delivered = false;
+	$barrier = static function ( $preempt, $args, $url ) use ( $reference, $callback, &$delivered ) {
+		if ( EPAY_TEST_FOLLOW_UP_ENDPOINT !== $url || $delivered ) {
+			return $preempt;
+		}
+		$fields = epay_test_fake_epay_request_fields( $args['body'] ?? '' );
+		if ( $reference !== ( $fields['MerchantReference'] ?? '' ) ) {
+			return $preempt;
+		}
+		$response = wp_remote_post( 'http://wordpress/?wc-api=epay_paycenter', array(
+			'headers' => array( 'Host' => 'localhost:8081', 'X-Epay-Test' => 'epay-qualification' ),
+			'body' => $callback, 'redirection' => 0, 'timeout' => 20,
+		) );
+		if ( is_wp_error( $response ) || 302 !== wp_remote_retrieve_response_code( $response ) ) {
+			throw new RuntimeException( 'The synthetic overlapping callback did not finish.' );
+		}
+		$delivered = true;
+		return epay_test_fake_follow_up_response( $fields, 'declined' );
+	};
+	add_filter( 'pre_http_request', $barrier, 20, 3 );
+	try {
+		$result = Epay_Paycenter_Reconciliation::reconcile_order( $order_id, false );
+	} finally {
+		remove_filter( 'pre_http_request', $barrier, 20 );
+	}
+	return array( 'callback_delivered' => $delivered, 'result' => $result );
+}
+
 /** Model an interrupted worker after persisting a sibling's bank approval. */
 function epay_test_persist_paid_sibling( $request ) {
 	global $wpdb;
@@ -869,6 +907,7 @@ add_action(
 		register_rest_route( 'epay-test/v1', '/follow-up/enable', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_enable_follow_up' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/fail-next-payment-complete', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_fail_next_payment_complete' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/run/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_run_follow_up' ) );
+		register_rest_route( 'epay-test/v1', '/follow-up/overlap/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_overlap_follow_up' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/persist-paid-sibling/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_persist_paid_sibling' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/worker', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_run_follow_up_worker' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/isolate-queue', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_isolate_follow_up_queue' ) );

@@ -13,6 +13,14 @@ msgstr ""
 "X-Generator: WP-CLI 2.9.0\n"
 "X-Domain: resilient-gateway-for-epay-paycenter\n"
 
+#: includes/class-epay-paycenter-handler.php
+msgid "Payment confirmation is busy. Please refresh this page shortly; do not pay again."
+msgstr ""
+
+#: includes/class-epay-paycenter-handler.php
+msgid "Payment confirmation"
+msgstr ""
+
 #. Plugin Name of the plugin
 msgid "Resilient Gateway for ePay Paycenter"
 msgstr ""

@@ -42,6 +42,9 @@ On 2026-09-14 the fork contributors added optional receipt/browser handoff
 diagnostics and correlated callback, return, and scheduling records. These
 observations do not change payment decisions or recovery timing.
 
+On 2026-09-15 the fork contributors coordinated callback, recovery and stock
+release writes to preserve paid orders during overlapping requests.
+
 ## Trademarks and services
 
 “ePay”, “Paycenter”, and “Piraeus Bank” are trademarks of Piraeus Bank S.A.

@@ -13,6 +13,14 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Domain: resilient-gateway-for-epay-paycenter\n"
 
+#: includes/class-epay-paycenter-handler.php
+msgid "Payment confirmation is busy. Please refresh this page shortly; do not pay again."
+msgstr "Η επιβεβαίωση της πληρωμής βρίσκεται σε εξέλιξη. Ανανεώστε αυτή τη σελίδα σε λίγο· μην πληρώσετε ξανά."
+
+#: includes/class-epay-paycenter-handler.php
+msgid "Payment confirmation"
+msgstr "Επιβεβαίωση πληρωμής"
+
 #. Plugin Name of the plugin
 msgid "Resilient Gateway for ePay Paycenter"
 msgstr "Resilient Gateway for ePay Paycenter"

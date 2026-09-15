@@ -340,6 +340,25 @@ async function verifyAndEnableFollowUp(request, order, channel = 'eCommerce') {
   return verification;
 }
 
+test('@callback @followup @payment-race recovery cannot fail an order paid by an overlapping callback', async ({ request }) => {
+  const order = await createOrder(request);
+  const first = await issueAttempt(request, order);
+  const second = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  const run = await setFixture(request, `follow-up/overlap/${order.order_id}`, {
+    reference: first.MerchantReference,
+    callback: callbackPayload(order.order_id, second.MerchantReference),
+  });
+  expect(run.callback_delivered).toBe(true);
+  const paid = await readOrder(request, order.order_id);
+  expect(paid.status).toBe('processing');
+  expect(paid.epay.payment_complete_count).toBe(1);
+  expect(paid.epay.settled_reference).toBe(second.MerchantReference);
+  expect(paid.epay.follow_up[second.MerchantReference].state).toBe('paid');
+  await setFixture(request, `follow-up/run/${order.order_id}`, {});
+  expect((await readOrder(request, order.order_id)).status).toBe('processing');
+});
+
 test('@smoke downstream and local Paycenter boundary are active', async ({ request }) => {
   const response = await request.get('/wp-json/epay-test/v1/health');
   expect(response.ok(), await response.text()).toBeTruthy();

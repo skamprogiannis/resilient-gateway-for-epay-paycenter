@@ -184,8 +184,29 @@ class Epay_Paycenter_Handler {
 			exit;
 		}
 
-		$order_id = $this->resolve_order_id_from_params( $params );
-		$order    = $order_id ? wc_get_order( $order_id ) : false;
+		$order_id    = $this->resolve_order_id_from_params( $params );
+		$destination = $this->with_order_lock(
+			$order_id,
+			function () use ( $order_id, $params, $claimed_reference ): string {
+				return $this->response_destination( $order_id, $params, $claimed_reference );
+			}
+		);
+		wp_safe_redirect( $destination );
+		exit;
+	}
+
+	/**
+	 * Process the callback against fresh state while holding the order mutation lock.
+	 *
+	 * @throws RuntimeException Caught locally if WooCommerce cannot persist payment.
+	 * @param int    $order_id Order ID.
+	 * @param array  $params Bounded callback fields.
+	 * @phpstan-param CallbackParams $params
+	 * @param string $claimed_reference Safe diagnostic reference.
+	 * @return string Customer destination.
+	 */
+	private function response_destination( int $order_id, array $params, string $claimed_reference ): string {
+		$order = Epay_Paycenter_Order_Lock::read_order( $order_id );
 
 		if ( ! $order instanceof WC_Order || $order->get_payment_method() !== EPAY_PAYCENTER_GATEWAY_ID ) {
 			if ( $this->consume_log_budget( 'anomaly', self::LOG_BUDGET_ANOMALY ) ) {
@@ -197,8 +218,7 @@ class Epay_Paycenter_Handler {
 					)
 				);
 			}
-			wp_safe_redirect( wc_get_checkout_url() );
-			exit;
+			return wc_get_checkout_url();
 		}
 
 		// Verify the MerchantReference belongs to this order (defence against
@@ -229,8 +249,7 @@ class Epay_Paycenter_Handler {
 					'claimed_reference' => $claimed_reference,
 				)
 			);
-			wp_safe_redirect( wc_get_checkout_url() );
-			exit;
+			return wc_get_checkout_url();
 		}
 		$received_reference = (string) $params['MerchantReference'];
 		$tran_ticket        = '';
@@ -253,8 +272,7 @@ class Epay_Paycenter_Handler {
 					)
 				);
 			}
-			wp_safe_redirect( wc_get_checkout_url() );
-			exit;
+			return wc_get_checkout_url();
 		}
 
 		$result_code = (string) $params['ResultCode'];
@@ -289,8 +307,7 @@ class Epay_Paycenter_Handler {
 			} else {
 				$this->record_recharge_attempt( $order, $params, $tran_ticket );
 			}
-			wp_safe_redirect( $this->gateway->get_return_url( $order ) );
-			exit;
+			return $this->gateway->get_return_url( $order );
 		}
 
 		if ( ! $is_success ) {
@@ -306,8 +323,7 @@ class Epay_Paycenter_Handler {
 						'claimed_reference' => $claimed_reference,
 					)
 				);
-				wp_safe_redirect( $order->get_checkout_payment_url() );
-				exit;
+				return $order->get_checkout_payment_url();
 			}
 
 			$params = $this->sanitize_callback_params( $params );
@@ -364,11 +380,10 @@ class Epay_Paycenter_Handler {
 			// refunds on IRIS transactions (ResponseCode 9167). Send those to
 			// the order-received page, which states the order is on hold.
 			if ( $is_pending ) {
-				wp_safe_redirect( $this->gateway->get_return_url( $order ) );
+				return $this->gateway->get_return_url( $order );
 			} else {
-				wp_safe_redirect( $order->get_checkout_payment_url() );
+				return $order->get_checkout_payment_url();
 			}
-			exit;
 		}
 
 		// $tran_ticket was resolved above from the OPEN attempt whose
@@ -384,8 +399,7 @@ class Epay_Paycenter_Handler {
 					'claimed_reference' => $claimed_reference,
 				)
 			);
-			wp_safe_redirect( wc_get_checkout_url() );
-			exit;
+			return wc_get_checkout_url();
 		}
 
 		$verify_fields = $this->build_hash_verify_fields( $tran_ticket, $params );
@@ -398,8 +412,7 @@ class Epay_Paycenter_Handler {
 					'claimed_reference' => $claimed_reference,
 				)
 			);
-			wp_safe_redirect( wc_get_checkout_url() );
-			exit;
+			return wc_get_checkout_url();
 		}
 
 		$params = $this->sanitize_callback_params( $params );
@@ -482,15 +495,13 @@ class Epay_Paycenter_Handler {
 					'reference' => $received_reference,
 				)
 			);
-			wp_safe_redirect( $this->gateway->get_return_url( $order ) );
-			exit;
+			return $this->gateway->get_return_url( $order );
 		}
 
 		WC()->cart->empty_cart();
 		Epay_Paycenter_Diagnostics::record( 'callback_completed', $order_id, $received_reference, array( 'order_status' => $order->get_status() ) );
 
-		wp_safe_redirect( $this->gateway->get_return_url( $order ) );
-		exit;
+		return $this->gateway->get_return_url( $order );
 	}
 
 	/**
@@ -672,17 +683,33 @@ class Epay_Paycenter_Handler {
 			$token = sanitize_text_field( wp_unslash( (string) $_REQUEST['token'] ) );
 		}
 
-		$order = wc_get_order( $order_id );
+		$destination = $this->with_order_lock(
+			$order_id,
+			function () use ( $order_id, $token ): string {
+				return $this->cancel_destination( $order_id, $token );
+			}
+		);
+		wp_safe_redirect( $destination );
+		exit;
+	}
+
+	/**
+	 * Apply a token-authenticated cancellation to freshly loaded order state.
+	 *
+	 * @param int    $order_id Order ID.
+	 * @param string $token Issued cancellation token.
+	 * @return string Customer destination.
+	 */
+	private function cancel_destination( int $order_id, string $token ): string {
+		$order = Epay_Paycenter_Order_Lock::read_order( $order_id );
 		if ( ! $order instanceof WC_Order ) {
-			wp_safe_redirect( wc_get_checkout_url() );
-			exit;
+			return wc_get_checkout_url();
 		}
 
 		$cancelled_reference = Epay_Paycenter_Open_Tickets::reference_for_cancel_token( $order, $token );
 		if ( '' === $cancelled_reference ) {
 			Epay_Paycenter_Logger::error( 'Cancel token mismatch', array( 'order_id' => $order_id ) );
-			wp_safe_redirect( wc_get_checkout_url() );
-			exit;
+			return wc_get_checkout_url();
 		}
 
 		Epay_Paycenter_Ticket_Audit::mark(
@@ -699,8 +726,33 @@ class Epay_Paycenter_Handler {
 
 		$cancel_notice = __( 'You cancelled the payment process. If your bank shows a charge, contact us before paying again.', 'resilient-gateway-for-epay-paycenter' );
 		Epay_Paycenter_Order_Notices::queue( $order_id, $cancel_notice, 'notice' );
-		wp_safe_redirect( Epay_Paycenter_Order_Notices::checkout_return_url( $order ) );
-		exit;
+		return Epay_Paycenter_Order_Notices::checkout_return_url( $order );
+	}
+
+	/**
+	 * Serialize a local mutation and release ownership before redirecting or exiting.
+	 *
+	 * @param int               $order_id Order ID.
+	 * @param callable():string $action Mutation and destination selection.
+	 * @return string Customer destination.
+	 */
+	private function with_order_lock( int $order_id, callable $action ): string {
+		if ( ! $order_id ) {
+			return wc_get_checkout_url();
+		}
+		if ( ! Epay_Paycenter_Order_Lock::acquire( $order_id ) ) {
+			header( 'Retry-After: 5' );
+			wp_die(
+				esc_html__( 'Payment confirmation is busy. Please refresh this page shortly; do not pay again.', 'resilient-gateway-for-epay-paycenter' ),
+				esc_html__( 'Payment confirmation', 'resilient-gateway-for-epay-paycenter' ),
+				array( 'response' => 503 )
+			);
+		}
+		try {
+			return $action();
+		} finally {
+			Epay_Paycenter_Order_Lock::release( $order_id );
+		}
 	}
 
 	/**

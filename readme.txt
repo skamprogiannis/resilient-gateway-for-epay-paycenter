@@ -269,6 +269,10 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 == Changelog ==
 
+= Unreleased =
+
+* Preserve successful callbacks during overlapping recovery and stock-release work by coordinating local order writes and reloading current payment evidence.
+
 = 2.2.0 =
 
 * Replace the warning panel with a native WooCommerce review page, searchable categories, pagination and an Orders review count.

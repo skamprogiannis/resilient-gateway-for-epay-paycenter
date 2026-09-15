@@ -12,3 +12,11 @@ abstract class WC_Data {
 	 */
 	public function update_meta_data( $key, $value, $meta_id = 0 ) {}
 }
+
+/**
+ * Optional HPOS cache invalidation forwarded through WC_Data_Store::__call().
+ * Callers check has_callable() because legacy order stores do not implement it.
+ *
+ * @method array<int,bool> clear_cached_data(list<int> $order_ids)
+ */
+class WC_Data_Store {}

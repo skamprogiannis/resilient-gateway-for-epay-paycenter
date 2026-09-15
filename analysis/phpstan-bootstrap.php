@@ -11,3 +11,4 @@ define( 'EPAY_PAYCENTER_PLUGIN_URL', 'https://example.test/wp-content/plugins/re
 define( 'EPAY_PAYCENTER_PLUGIN_BASENAME', 'resilient-gateway-for-epay-paycenter/resilient-gateway-for-epay-paycenter.php' );
 define( 'EPAY_PAYCENTER_VERSION', '2.0.0' );
 define( 'EPAY_PAYCENTER_GATEWAY_ID', 'epay_paycenter' );
+define( 'DB_NAME', 'epay_qualification' );
