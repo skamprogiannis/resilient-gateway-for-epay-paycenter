@@ -95,8 +95,11 @@ Successful callbacks are idempotent. A response for an already-paid order does
 not replace the recorded settlement. A documented recharge response can be
 recorded for audit without changing the paid order.
 
-Callbacks, recovery results and the plugin's stock-release task serialize their
-local writes with a connection-owned MySQL order lock. Recovery performs bank
+Callbacks, recovery results, the plugin's stock-release task and native timed
+cancellation of ePay orders serialize local writes with a connection-owned
+MySQL order lock. The native timer uses a fresh locked order instead of allowing
+core to write its older snapshot; disabled recovery retains the normal hold.
+Recovery performs bank
 requests outside this lock, then rereads the order and unresolved attempts
 before applying results. A response already superseded by a completed callback
 cannot demote that payment. Lock contention is retryable; it is not a decline.

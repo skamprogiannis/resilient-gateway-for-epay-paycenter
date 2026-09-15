@@ -5,6 +5,8 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Coordinate WooCommerce's native unpaid-order timer with authenticated
+  callbacks, retaining the existing hold duration when recovery is disabled.
 - Retain each queried recovery attempt during the locked reread, including
   newer due attempts behind older deferred work in a bounded batch.
 - Pin CI and release actions to verified commit SHAs, retaining version comments.

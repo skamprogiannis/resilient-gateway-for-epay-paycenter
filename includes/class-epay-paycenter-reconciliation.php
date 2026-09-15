@@ -1022,7 +1022,7 @@ final class Epay_Paycenter_Reconciliation {
 	}
 
 	/**
-	 * Delay WooCommerce cancellation until the recovery reservation expires.
+	 * Perform native timed cancellation on a fresh order under the payment lock.
 	 *
 	 * @param bool     $cancel Whether core would cancel.
 	 * @param WC_Order $order  Order.
@@ -1030,15 +1030,31 @@ final class Epay_Paycenter_Reconciliation {
 	 */
 	public static function filter_cancel_unpaid_order( $cancel, $order ) {
 		if ( ! $cancel
-			|| ! self::is_enabled()
 			|| EPAY_PAYCENTER_GATEWAY_ID !== $order->get_payment_method() ) {
 			return $cancel;
 		}
-		$created = $order->get_date_created();
-		if ( ! $created ) {
-			return $cancel;
+		$order_id = $order->get_id();
+		if ( ! Epay_Paycenter_Order_Lock::acquire( $order_id ) ) {
+			return false;
 		}
-		return ( time() - $created->getTimestamp() ) >= self::stock_hold_minutes() * MINUTE_IN_SECONDS;
+		try {
+			$order = Epay_Paycenter_Order_Lock::read_order( $order_id );
+			if ( ! $order instanceof WC_Order || $order->is_paid() || ! $order->has_status( 'pending' )
+				|| EPAY_PAYCENTER_GATEWAY_ID !== $order->get_payment_method() ) {
+				return false;
+			}
+			$created = $order->get_date_created();
+			if ( self::is_enabled() && $created
+				&& time() - $created->getTimestamp() < self::stock_hold_minutes() * MINUTE_IN_SECONDS ) {
+				return false;
+			}
+			// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch -- Retain WooCommerce's native cancellation note and translations.
+			$order->update_status( 'cancelled', __( 'Unpaid order cancelled - time limit reached.', 'woocommerce' ) );
+		} finally {
+			Epay_Paycenter_Order_Lock::release( $order_id );
+		}
+		// Core must not repeat the write using its pre-filter order snapshot.
+		return false;
 	}
 
 	/**

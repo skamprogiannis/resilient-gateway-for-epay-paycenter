@@ -1140,6 +1140,23 @@ test('@attempt an aged unpaid order is cancelled by WooCommerce', async ({ reque
   });
 });
 
+for (const recoveryEnabled of [false, true]) {
+  test(`@callback @native-cancel-race the unpaid-order timer preserves an overlapping approval, recovery ${recoveryEnabled}`, async ({ request }) => {
+    const order = await createOrder(request);
+    const attempt = await issueAttempt(request, order);
+    if (recoveryEnabled) await verifyAndEnableFollowUp(request, order);
+    const result = await setFixture(request, `cancel-unpaid/${order.order_id}`, {
+      age_minutes: recoveryEnabled ? 245 : 90,
+      callback: callbackPayload(order.order_id, attempt.MerchantReference),
+    });
+    expect(result.callback_delivered).toBe(true);
+    const paid = await readOrder(request, order.order_id);
+    expect(paid.status).toBe('processing');
+    expect(paid.epay.payment_complete_count).toBe(1);
+    expect(paid.epay.ticket_statuses[attempt.MerchantReference]).toBe('succeeded');
+  });
+}
+
 test('@attempt recovery remains opt-in and does not extend stock hold while disabled', async ({ request }) => {
   const order = await createOrder(request);
   await issueAttempt(request, order);

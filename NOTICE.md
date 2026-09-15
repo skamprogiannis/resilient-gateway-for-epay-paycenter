@@ -60,6 +60,8 @@ Activation's logging dependencies were loaded explicitly on 2026-09-15 so
 scheduling errors remain reportable before normal plugin bootstrap.
 The same day's recovery reread was restricted to the queried attempt IDs so
 older deferred attempts cannot displace a newer confirmed result.
+Native WooCommerce timed cancellation was included in the order-lock boundary
+on 2026-09-15 without changing stock-hold durations or other gateways.
 
 ## Trademarks and services
 

@@ -335,9 +335,32 @@ function epay_test_cancel_unpaid_order( $request ) {
 		array( '%d' )
 	);
 	clean_post_cache( $order->get_id() );
-	wc_cancel_unpaid_orders();
+	$callback = $request->get_param( 'callback' );
+	$delivered = false;
+	$barrier = static function ( $cancel, $candidate ) use ( $order, $callback, &$delivered ) {
+		if ( $candidate->get_id() !== $order->get_id() ) {
+			return false;
+		}
+		if ( is_array( $callback ) && ! $delivered ) {
+			$response = wp_remote_post( 'http://wordpress/?wc-api=epay_paycenter', array(
+				'headers' => array( 'Host' => 'localhost:8081', 'X-Epay-Test' => 'epay-qualification' ),
+				'body' => $callback, 'redirection' => 0, 'timeout' => 20,
+			) );
+			if ( is_wp_error( $response ) || 302 !== wp_remote_retrieve_response_code( $response ) ) {
+				throw new RuntimeException( 'The synthetic timer-overlap callback did not finish.' );
+			}
+			$delivered = true;
+		}
+		return $cancel;
+	};
+	add_filter( 'woocommerce_cancel_unpaid_order', $barrier, 5, 2 );
+	try {
+		wc_cancel_unpaid_orders();
+	} finally {
+		remove_filter( 'woocommerce_cancel_unpaid_order', $barrier, 5 );
+	}
 
-	return array( 'order' => epay_test_describe_order( wc_get_order( $order->get_id() ) ) );
+	return array( 'order' => epay_test_describe_order( wc_get_order( $order->get_id() ) ), 'callback_delivered' => $delivered );
 }
 
 function epay_test_set_fake_result( $request ) {
