@@ -1,5 +1,5 @@
 const crypto = require('node:crypto');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/fake-paycenter');
 
 async function setLayout(request, layout, options = {}) {
   const response = await request.post('/wp-json/epay-test/v1/checkout-layout', { data: { layout, ...options } });
@@ -83,14 +83,8 @@ test.describe('checkout layouts', () => {
   });
 
   for (const layout of ['classic', 'blocks']) {
-    test(`@matrix ${layout} checkout submits a real cart through ePay`, async ({ page, request }) => {
+    test(`@matrix ${layout} checkout submits a real cart through ePay`, async ({ page, request, fakePaycenter }) => {
       const fixture = await setLayout(request, layout);
-      let handoff = null;
-      await page.route('https://paycenter.piraeusbank.gr/**', async (route) => {
-        expect(route.request().method()).toBe('POST');
-        handoff = new URLSearchParams(route.request().postData() || '');
-        await route.fulfill({ status: 200, contentType: 'text/html', body: '<h1>Fake Paycenter</h1>' });
-      });
 
       await page.goto(fixture.add_to_cart_url);
       await page.goto(fixture.checkout_url);
@@ -119,7 +113,8 @@ test.describe('checkout layouts', () => {
       }
 
       await expect(page.getByRole('heading', { name: 'Fake Paycenter' })).toBeVisible({ timeout: 25_000 });
-      expect(handoff).not.toBeNull();
+      expect(fakePaycenter.submissions).toHaveLength(1);
+      const handoff = fakePaycenter.submissions[0];
       const reference = handoff.get('MerchantReference');
       expect(reference).toMatch(/^\d+-[A-Z0-9]+$/);
       for (const field of ['TranTicket', 'Password', 'HashKey']) expect(handoff.has(field)).toBe(false);
