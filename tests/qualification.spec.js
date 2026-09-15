@@ -1685,6 +1685,28 @@ test('@review @order-evidence order panel preserves retry references and links o
   expect(await readOrder(request, order.order_id)).toEqual(before);
 });
 
+test('@review @order-evidence @final-evidence a signed approval supersedes a prior pending lookup in the panel', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, 'fake-follow-up', { scenario: 'failure_09_iris', channel: 'eCommerce' });
+  await setFixture(request, `follow-up/run/${order.order_id}`, {});
+  await loginAsLocalAdmin(page);
+  await page.goto(`/wp-admin/post.php?post=${order.order_id}&action=edit`);
+  const panel = page.locator('#epay-order-payment');
+  await expect(panel).toContainText('Failure / 09');
+  const detailUrl = await panel.getByRole('link', { name: 'View transaction', exact: true }).getAttribute('href');
+  await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, attempt.MerchantReference, {
+    StatusFlag: 'Success', ResponseCode: '00', PaymentMethod: 'IRIS', CardType: '15', TransactionId: '202001020000000000001234567890',
+  }));
+  expect((await readOrder(request, order.order_id)).status).toBe('processing');
+  await page.reload();
+  await expect(panel).toContainText('Success / 00');
+  await expect(panel).not.toContainText('Failure / 09');
+  await expect(panel.getByRole('link', { name: 'View transaction', exact: true })).toHaveAttribute('href', detailUrl);
+  expect(detailUrl).not.toContain('202001020000000000001234567890');
+});
+
 test('@review @order-evidence IRIS links need a FOLLOW_UP ID and a recorded method', async ({ page, request }) => {
   const callbackOrder = await createOrder(request);
   const callback = await issueAttempt(request, callbackOrder);

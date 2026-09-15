@@ -271,6 +271,7 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 = Unreleased =
 
+* Show a resolving callback instead of an older pending lookup in the order panel, without losing compatible AdminTool links.
 * Keep each attempt's callback evidence separate in the order panel; new attempts no longer inherit an earlier payment result.
 * Stop checkout handoff if its payment-attempt record cannot be saved, preserving earlier attempts and allowing a retry.
 * Preserve confirmed bank approvals for deleted, trashed or refunded orders and keep them available for payment review.

@@ -107,6 +107,12 @@ final class Epay_Paycenter_Order_Evidence {
 					$transaction_id = $callback['transaction_id'];
 				}
 			}
+			if ( null !== $callback && 'callback' === ( $row['resolution_source'] ?? '' ) ) {
+				// The resolving callback supersedes a prior lookup's provisional status.
+				// Keep its compatible FOLLOW_UP transaction ID for the AdminTool link.
+				$bank_status   = $callback['bank_status'];
+				$response_code = $callback['response_code'];
+			}
 			$detail_url = '';
 			if ( 1 === preg_match( '/^[0-9]+$/D', $transaction_id ) ) {
 				if ( 'iris' === $method && $has_follow_up ) {

@@ -5,6 +5,8 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Display the callback that resolved an attempt ahead of its earlier pending
+  bank lookup, while retaining compatible server-returned AdminTool IDs.
 - Keep callback display evidence per payment attempt so a new receipt cannot
   inherit another attempt's bank result or transaction link. Show older shared
   metadata only when its reference and audit provenance match.

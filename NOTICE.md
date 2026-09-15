@@ -54,6 +54,8 @@ On 2026-09-15 the bank handoff was made conditional on persisting its payment
 attempt, so missing callbacks remain recoverable.
 On 2026-09-15 the order panel's callback evidence was stored independently per
 attempt, with conservative matching for pre-upgrade shared metadata.
+The same day's evidence-selection correction displays a resolving callback
+instead of an earlier provisional bank lookup.
 
 ## Trademarks and services
 
