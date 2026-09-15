@@ -361,6 +361,21 @@ test('@callback @followup @payment-race recovery cannot fail an order paid by an
   expect((await readOrder(request, order.order_id)).status).toBe('processing');
 });
 
+test('@followup @due-attempts a newer due approval is recovered behind ten deferred attempts', async ({ request }) => {
+  const order = await createOrder(request);
+  for (let index = 0; index < 10; index += 1) await issueAttempt(request, order);
+  const latest = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, 'follow-up/isolate-queue', { order_ids: [order.order_id] });
+  await setFixture(request, `follow-up/prioritise/${order.order_id}`, { reference: latest.MerchantReference });
+  await setFixture(request, 'follow-up/worker', {});
+  const paid = await readOrder(request, order.order_id);
+  expect(paid.status).toBe('processing');
+  expect(paid.epay.settled_reference).toBe(latest.MerchantReference);
+  expect(paid.epay.payment_complete_count).toBe(1);
+  expect(paid.epay.follow_up[latest.MerchantReference].state).toBe('paid');
+});
+
 test('@smoke downstream and local Paycenter boundary are active', async ({ request }) => {
   const response = await request.get('/wp-json/epay-test/v1/health');
   expect(response.ok(), await response.text()).toBeTruthy();

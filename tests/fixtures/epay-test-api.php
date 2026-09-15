@@ -627,12 +627,16 @@ function epay_test_drop_stock_event( $request ) {
 function epay_test_prioritise_follow_up( $request ) {
 	global $wpdb;
 	$table = $wpdb->prefix . 'epay_paycenter_tickets';
+	$where = array( 'order_id' => (int) $request['id'] );
+	$reference = $request->get_param( 'reference' );
+	if ( is_string( $reference ) && '' !== $reference ) {
+		$wpdb->update( $table, array( 'next_check_at' => gmdate( 'Y-m-d H:i:s', time() + 600 ) ), $where );
+		$where['merchant_reference'] = $reference;
+	}
 	$wpdb->update(
 		$table,
 		array( 'next_check_at' => '2000-01-01 00:00:00' ),
-		array( 'order_id' => (int) $request['id'] ),
-		array( '%s' ),
-		array( '%d' )
+		$where
 	);
 	return array( 'order_id' => (int) $request['id'] );
 }

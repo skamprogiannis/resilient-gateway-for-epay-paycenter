@@ -547,14 +547,7 @@ final class Epay_Paycenter_Reconciliation {
 			}
 			$order = Epay_Paycenter_Order_Lock::read_order( $order_id );
 			// A callback may have resolved an attempt while its lookup was in flight.
-			$rows = array_values(
-				array_filter(
-					self::rows_for_order( $order_id, true ),
-					static function ( array $row ) use ( $results ): bool {
-						return isset( $results[ $row['id'] ] );
-					}
-				)
-			);
+			$rows = self::rows_for_order( $order_id, true, array_keys( $results ) );
 			if ( empty( $rows ) ) {
 				$summary['unresolved'] = self::unresolved_count( $order_id );
 				return $summary;
@@ -1151,16 +1144,22 @@ final class Epay_Paycenter_Reconciliation {
 	/**
 	 * Load unresolved attempts in creation order.
 	 *
-	 * @param int  $order_id Order ID.
-	 * @param bool $force Include attempts before their next scheduled check.
+	 * @param int   $order_id Order ID.
+	 * @param bool  $force Include attempts before their next scheduled check.
+	 * @param int[] $attempt_ids Reload only these already-queried attempts, regardless of due time.
 	 * @throws RuntimeException If the database query fails.
 	 * @return list<TicketRow>
 	 */
-	private static function rows_for_order( int $order_id, bool $force ) {
+	private static function rows_for_order( int $order_id, bool $force, array $attempt_ids = array() ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'epay_paycenter_tickets';
 		$now   = gmdate( 'Y-m-d H:i:s' );
-		if ( $force ) {
+		if ( ! empty( $attempt_ids ) ) {
+			$placeholders = implode( ',', array_fill( 0, count( $attempt_ids ), '%d' ) );
+			$values       = array_merge( array( $table, $order_id ), $attempt_ids );
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Generated placeholders match the bound ID list; the leading table and order ID are also bound.
+			$sql = $wpdb->prepare( "SELECT * FROM %i WHERE order_id = %d AND resolved_at IS NULL AND id IN ($placeholders) ORDER BY id ASC", $values );
+		} elseif ( $force ) {
 			$sql = $wpdb->prepare(
 				'SELECT * FROM %i WHERE order_id = %d AND resolved_at IS NULL ORDER BY id ASC LIMIT %d',
 				$table,
@@ -1176,7 +1175,7 @@ final class Epay_Paycenter_Reconciliation {
 				self::MAX_ATTEMPTS_PER_ORDER
 			);
 		}
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- Both query branches prepare every identifier and value; the queue must be read fresh.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- Every query branch prepares identifiers and values; the queue must be read fresh.
 		$rows = $wpdb->get_results( $sql, ARRAY_A );
 		if ( '' !== $wpdb->last_error || ! is_array( $rows ) ) {
 			throw new RuntimeException( 'Could not load ePay reconciliation attempts.' );
