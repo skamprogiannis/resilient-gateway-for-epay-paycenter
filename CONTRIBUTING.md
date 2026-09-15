@@ -119,6 +119,11 @@ catalog together.
 
 ## Pull requests
 
+Pin third-party GitHub Actions to full commit SHAs with a readable version
+comment. When updating an action, resolve its tag in the official repository
+with `git ls-remote`; use the peeled commit for annotated tags, and review the
+upstream changes before changing the pin. Do not replace pins with moving tags.
+
 Keep each change focused. Explain the payment invariant affected, the tests
 run, and any operator action required. Use synthetic identifiers in examples.
 For security-sensitive work, follow [SECURITY.md](SECURITY.md) instead of

@@ -5,6 +5,7 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Pin CI and release actions to verified commit SHAs, retaining version comments.
 - Load activation-time logging dependencies before migration and recovery
   scheduling so a scheduling error cannot cause a missing-class fatal.
 - Display the callback that resolved an attempt ahead of its earlier pending
