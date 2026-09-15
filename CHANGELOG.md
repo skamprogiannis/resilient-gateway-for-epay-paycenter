@@ -5,6 +5,8 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Select legacy storage explicitly for the primary CI suite, then qualify
+  recovery, callback safeguards and order administration with HPOS.
 - Preserve provably bound pre-upgrade callback details before the first retry
   replaces the shared reference, without assigning them to the new attempt.
   Verify the stored snapshot before allowing a retry after a metadata write.

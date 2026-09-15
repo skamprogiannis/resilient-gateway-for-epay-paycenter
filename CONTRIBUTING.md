@@ -79,6 +79,11 @@ settings, and migrations in Chromium. The matrix checks classic and Blocks
 checkout across seven browser configurations. Add `-v` to the shutdown command
 only when you want to reset the synthetic database.
 
+CI explicitly selects legacy order storage for the full suite and browser
+matrix, then switches to HPOS for callback, recovery and administration
+regressions. Local installations retain their existing storage setting;
+classic versus Blocks checkout does not select the order-storage backend.
+
 Shared API fixtures load through the mounted plugin directory. Only `setup.php`
 gets an extra mount, so bootstrap checks catch dependencies on unmounted fixtures.
 

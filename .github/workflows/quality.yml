@@ -62,13 +62,17 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps
       - run: bash scripts/prepare-tests.sh
+      - name: Select legacy order storage for the primary suite
+        run: |
+          docker compose -f compose.test.yml run --rm wpcli wp wc hpos sync
+          docker compose -f compose.test.yml run --rm wpcli wp option update woocommerce_custom_orders_table_enabled no
       - run: npm run test:integration
       - run: npm run test:matrix
-      - name: Qualify payment reviews with HPOS
+      - name: Qualify payment recovery and reviews with HPOS
         run: |
           docker compose -f compose.test.yml run --rm wpcli wp wc hpos sync
           docker compose -f compose.test.yml run --rm wpcli wp option update woocommerce_custom_orders_table_enabled yes
-          npm run test:integration -- --grep '@review|@recovery-settings|@recovery-window'
+          npm run test:integration -- --grep '@review|@recovery-settings|@recovery-window|@payment-race|@native-cancel-race|@due-attempts|@callback-privacy|@signed-decisions|@durable-ticket|@durable-approval|@activation'
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
