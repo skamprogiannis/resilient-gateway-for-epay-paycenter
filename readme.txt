@@ -271,6 +271,7 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 = Unreleased =
 
+* Preserve confirmed bank approvals for deleted, trashed or refunded orders and keep them available for payment review.
 * Decide callback approval and pending outcomes from signed fields only. Keep ambiguous code 09 transfers open for bank verification regardless of the claimed payment method.
 * Require callback authentication before returning an order access URL, including for already-paid orders.
 * Preserve successful callbacks during overlapping recovery and stock-release work by coordinating local order writes and reloading current payment evidence.

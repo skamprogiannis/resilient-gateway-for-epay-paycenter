@@ -535,7 +535,8 @@ final class Epay_Paycenter_Reconciliation {
 			$client  = Epay_Paycenter_Follow_Up::from_settings();
 			$results = array();
 			foreach ( $rows as $row ) {
-				$results[ $row['id'] ] = $can_mutate && 'paid_unsettled' === $row['follow_up_state']
+				// Confirmed payment survives deletion, refund status and bank outages.
+				$results[ $row['id'] ] = 'paid_unsettled' === $row['follow_up_state']
 					? self::bank_result_from_row( $row )
 					: $client->query( $row['merchant_reference'], $channel );
 			}

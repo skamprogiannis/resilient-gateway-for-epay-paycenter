@@ -5,6 +5,9 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Preserve stored bank approvals when an order becomes ineligible for local
+  settlement. Deleted, trashed and refunded orders remain reviewable without
+  querying away their confirmed payment evidence.
 - Base callback approval and pending decisions on signed fields. Unsigned
   result or method fields cannot turn an approval or unresolved transfer into
   a final decline; trusted follow-up card declines remain supported.

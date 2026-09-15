@@ -1483,6 +1483,30 @@ test('@followup retries when WooCommerce cannot persist the paid transition', as
   });
 });
 
+for (const terminalAction of ['refund', 'trash', 'delete']) {
+  test(`@followup @durable-approval a ${terminalAction} cannot erase an approval awaiting local settlement`, async ({ request }) => {
+    const order = await createOrder(request);
+    const attempt = await issueAttempt(request, order);
+    await verifyAndEnableFollowUp(request, order);
+    await setFixture(request, 'follow-up/fail-next-payment-complete', {});
+    const unsettled = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+    expect(unsettled.result.settlement_errors).toBe(1);
+    expect(unsettled.follow_up[attempt.MerchantReference].state).toBe('paid_unsettled');
+    await setFixture(request, `${terminalAction}-order/${order.order_id}`, {});
+    await setFixture(request, 'fake-follow-up', { scenario: 'transport_error', channel: 'eCommerce' });
+
+    const checked = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+    expect(checked.result).toMatchObject({ paid: 1, query_errors: 0 });
+    expect(checked.follow_up[attempt.MerchantReference]).toMatchObject({ state: 'paid', response_code: '00', status_flag: 'Success' });
+    expect(checked.requests).toHaveLength(0);
+    expect(checked.order === null || ['refunded', 'trash'].includes(checked.order.status)).toBe(true);
+    const report = await request.get('/wp-json/epay-test/v1/review-cases');
+    expect(Object.values((await report.json()).items)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reference: attempt.MerchantReference, type: terminalAction === 'trash' ? 'trash_paid' : 'missing_paid' }),
+    ]));
+  });
+}
+
 test('@followup fails an unpaid order only after every attempt is definitively declined', async ({ request }) => {
   const verificationOrder = await createOrder(request);
   await issueAttempt(request, verificationOrder);
