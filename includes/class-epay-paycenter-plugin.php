@@ -380,6 +380,8 @@ final class Epay_Paycenter_Plugin {
 	 * Activation handler. Runs the same ordered migrations used by normal updates.
 	 */
 	public static function on_activate(): void {
+		require_once EPAY_PAYCENTER_PLUGIN_DIR . 'includes/class-epay-paycenter-logger.php';
+		require_once EPAY_PAYCENTER_PLUGIN_DIR . 'includes/class-epay-paycenter-diagnostics.php';
 		require_once EPAY_PAYCENTER_PLUGIN_DIR . 'includes/class-epay-paycenter-credentials.php';
 		self::maybe_upgrade_db();
 

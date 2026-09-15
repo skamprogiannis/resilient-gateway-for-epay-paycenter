@@ -271,6 +271,7 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 = Unreleased =
 
+* Keep activation usable when recovery scheduling fails, with the actual scheduling error logged.
 * Show a resolving callback instead of an older pending lookup in the order panel, without losing compatible AdminTool links.
 * Keep each attempt's callback evidence separate in the order panel; new attempts no longer inherit an earlier payment result.
 * Stop checkout handoff if its payment-attempt record cannot be saved, preserving earlier attempts and allowing a retry.

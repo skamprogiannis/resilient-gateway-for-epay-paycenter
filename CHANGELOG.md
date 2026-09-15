@@ -5,6 +5,8 @@ Release artifacts and checksums belong in GitHub Releases.
 
 ## Unreleased
 
+- Load activation-time logging dependencies before migration and recovery
+  scheduling so a scheduling error cannot cause a missing-class fatal.
 - Display the callback that resolved an attempt ahead of its earlier pending
   bank lookup, while retaining compatible server-returned AdminTool IDs.
 - Keep callback display evidence per payment attempt so a new receipt cannot

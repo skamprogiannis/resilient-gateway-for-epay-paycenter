@@ -1,4 +1,6 @@
 const crypto = require('node:crypto');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const { test, expect } = require('@playwright/test');
 
 const POS_ID = process.env.EPAY_TEST_POS_ID || '99999999';
@@ -1683,6 +1685,20 @@ test('@review @order-evidence order panel preserves retry references and links o
   await expect(paid).toContainText('Reference copied.');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(earlier.MerchantReference);
   expect(await readOrder(request, order.order_id)).toEqual(before);
+});
+
+test('@activation inactive-plugin activation reports a scheduler failure without missing dependencies', async ({ request }) => {
+  const order = await createOrder(request);
+  await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  const { stdout } = await promisify(execFile)('docker', [
+    'compose', '-f', 'compose.test.yml', 'run', '--rm', 'wpcli', 'wp',
+    '--skip-plugins=resilient-gateway-for-epay-paycenter', 'eval-file',
+    'wp-content/plugins/resilient-gateway-for-epay-paycenter/tests/fixtures/activation.php',
+  ], { timeout: 45000 });
+  expect(JSON.parse(stdout.trim())).toEqual({
+    activation_completed: true, schedule_attempted: true, error_logged: true, active_plugins_unchanged: true,
+  });
 });
 
 test('@review @order-evidence @final-evidence a signed approval supersedes a prior pending lookup in the panel', async ({ page, request }) => {
