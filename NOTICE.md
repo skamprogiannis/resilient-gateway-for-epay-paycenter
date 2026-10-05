@@ -65,6 +65,9 @@ on 2026-09-15 without changing stock-hold durations or other gateways.
 The same day's evidence upgrade preserves still-bound shared callback metadata
 before a new receipt replaces its reference.
 
+On 2026-10-05 the fork contributors verified fresh persisted cron state before
+reporting concurrent recovery scheduling failures, retaining real error reports.
+
 ## Trademarks and services
 
 “ePay”, “Paycenter”, and “Piraeus Bank” are trademarks of Piraeus Bank S.A.

@@ -3,6 +3,12 @@
 Notable changes to Resilient Gateway for ePay Paycenter are recorded here.
 Release artifacts and checksums belong in GitHub Releases.
 
+## Unreleased — 2026-10-05
+
+- Verify the persisted reconciliation worker after a concurrent cron write
+  reports `could_not_set` or `duplicate_event`, bypassing stale option caches.
+  Preserve genuine database failures and scheduler vetoes in diagnostics.
+
 ## 2.2.1 — 2026-09-15
 
 - Select legacy storage explicitly for the primary CI suite, then qualify

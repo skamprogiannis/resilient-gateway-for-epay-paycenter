@@ -70,16 +70,50 @@ final class Epay_Paycenter_Reconciliation {
 	 * @return bool Whether a worker is already scheduled or was scheduled now.
 	 */
 	public static function schedule( $delay = 300 ) {
+		global $wpdb;
+
 		if ( wp_next_scheduled( self::CRON_HOOK ) ) {
 			return true;
 		}
 		$due    = time() + max( 10, (int) $delay );
 		$result = wp_schedule_single_event( $due, self::CRON_HOOK, array(), true );
 		if ( is_wp_error( $result ) ) {
+			// Another request can persist the same worker before core saves its cron array.
+			// Check the write error before the fresh read can reset wpdb::last_error.
+			if ( in_array( $result->get_error_code(), array( 'could_not_set', 'duplicate_event' ), true )
+				&& '' === $wpdb->last_error && self::has_persisted_worker() ) {
+				return true;
+			}
 			Epay_Paycenter_Diagnostics::scheduling_error( 'Could not schedule the ePay reconciliation worker.', $result, self::CRON_HOOK, $due );
 			return false;
 		}
 		return true;
+	}
+
+	/** Confirm a single, argument-free worker without trusting the request's option cache. */
+	private static function has_persisted_worker(): bool {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- A competing cron write can leave both cron and alloptions caches stale.
+		$raw = $wpdb->get_var( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, 'cron' ) );
+		if ( '' !== $wpdb->last_error || ! is_string( $raw ) ) {
+			return false;
+		}
+		$cron = maybe_unserialize( $raw );
+		if ( ! is_array( $cron ) ) {
+			return false;
+		}
+		$key = md5( serialize( array() ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Match WordPress cron's argument key.
+		foreach ( $cron as $timestamp => $hooks ) {
+			if ( ! is_numeric( $timestamp ) || (int) $timestamp <= 0 || ! is_array( $hooks ) ) {
+				continue;
+			}
+			$event = $hooks[ self::CRON_HOOK ][ $key ] ?? null;
+			if ( is_array( $event ) && false === ( $event['schedule'] ?? null ) && array() === ( $event['args'] ?? null ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Remove workers and per-order stock-release events. */

@@ -45,3 +45,7 @@ callback privacy, signed-decision, concurrent-settlement and durable-recovery
 fixes. It preserves per-attempt order evidence, handles activation scheduling
 errors and pins CI dependencies. These are maintained-fork changes; the
 immutable upstream import remains unchanged.
+
+Unreleased maintenance (2026-10-05) confirms persisted recovery workers after
+concurrent scheduling errors, bypassing stale caches while preserving genuine
+failures. This correction belongs to the maintained fork.

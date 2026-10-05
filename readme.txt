@@ -269,6 +269,10 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 == Changelog ==
 
+= Unreleased =
+
+* Confirm a persisted recovery worker before reporting a concurrent scheduling failure, even with stale caches. Genuine database errors and scheduler vetoes remain visible.
+
 = 2.2.1 =
 
 * Add optional, correlated checkout handoff diagnostics with bounded, scrubbed browser reports. Diagnostic reporting never determines payment status or blocks submission.
