@@ -72,6 +72,11 @@ function epay_test_fake_follow_up_response( array $fields, $scenario ) {
 		$response_code  = '05';
 		$response_desc  = 'Declined by issuer';
 		$payment_method = 'Card';
+	} elseif ( in_array( $scenario, array( 'failure_empty', 'failure_missing', 'failure_whitespace', 'failure_empty_card' ), true ) ) {
+		$status_flag    = 'Failure';
+		$response_code  = 'failure_whitespace' === $scenario ? " \t\n " : '';
+		$response_desc  = '';
+		$payment_method = 'failure_empty_card' === $scenario ? 'Card' : '';
 	} elseif ( in_array( $scenario, array( 'failure_09_iris', 'failure_09_unknown', 'failure_09_card' ), true ) ) {
 		$status_flag    = 'Failure';
 		$response_code  = '09';
@@ -109,6 +114,10 @@ function epay_test_fake_follow_up_response( array $fields, $scenario ) {
 			'Success' === $status_flag ? 'TST-IRIS-987654321' : '',
 			'Success' === $status_flag ? 'Authorised' : ''
 		);
+	}
+
+	if ( 'failure_missing' === $scenario ) {
+		$transaction_info = str_replace( '<ResponseCode></ResponseCode>', '', $transaction_info );
 	}
 
 	$body = sprintf(

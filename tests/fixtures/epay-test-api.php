@@ -46,13 +46,14 @@ add_filter( 'query', static function ( $sql ) {
 	$attempt = 'attempt-error' === $scenario && false !== strpos( $sql, 'SELECT * FROM' ) && false !== strpos( $sql, 'epay_paycenter_tickets' );
 	$insert = 'ticket-insert-error' === $scenario && 0 === strpos( $sql, 'INSERT INTO' ) && false !== strpos( $sql, 'epay_paycenter_tickets' );
 	$snapshot = 'legacy-snapshot-error' === $scenario && 0 === strpos( $sql, 'INSERT INTO' ) && false !== strpos( $sql, '_epay_callback_evidence_' );
+	$migration = 'recheck-migration-error' === $scenario && 0 === strpos( $sql, 'UPDATE ' ) && false !== strpos( $sql, 'follow_up_recheck' );
 	static $review_updates = 0;
 	$review_save = false;
 	if ( in_array( $scenario, array( 'review-save-error', 'review-partial-error' ), true ) && 0 === strpos( $sql, 'UPDATE ' ) && false !== strpos( $sql, 'epay_paycenter_reconcile_report' ) ) {
 		++$review_updates;
 		$review_save = 'review-save-error' === $scenario || 2 === $review_updates;
 	}
-	if ( $queue || $report || $worker || $attempt || $insert || $snapshot || $review_save ) {
+	if ( $queue || $report || $worker || $attempt || $insert || $snapshot || $review_save || $migration ) {
 		return 'SELECT * FROM epay_test_unavailable_status';
 	}
 	return $sql;
@@ -141,7 +142,7 @@ function epay_test_ticket_follow_up( $order_id ) {
 
 	$rows = $wpdb->get_results(
 		$wpdb->prepare(
-			"SELECT merchant_reference, follow_up_state, follow_up_attempts, follow_up_result_code,
+			"SELECT merchant_reference, resolution_source, last_checked_at, follow_up_state, follow_up_attempts, follow_up_result_code,
 				follow_up_response_code, follow_up_status_flag, follow_up_payment_method, created_at, next_check_at, resolved_at
 			 FROM {$table} WHERE order_id = %d ORDER BY id ASC",
 			$order_id
@@ -154,6 +155,8 @@ function epay_test_ticket_follow_up( $order_id ) {
 		if ( '' !== $reference ) {
 			$details[ $reference ] = array(
 				'state'         => (string) $row['follow_up_state'],
+				'source'        => (string) $row['resolution_source'],
+				'last_checked_at' => $row['last_checked_at'],
 				'attempts'      => (int) $row['follow_up_attempts'],
 				'result_code'   => (string) $row['follow_up_result_code'],
 				'response_code' => (string) $row['follow_up_response_code'],
@@ -186,6 +189,11 @@ function epay_test_describe_order( $order ) {
 		'order_id'          => $order->get_id(),
 		'status'            => $order->get_status(),
 		'payment_method'    => $order->get_payment_method(),
+		'effects'           => array(
+			'stock_reductions' => (int) $order->get_meta( '_epay_test_stock_reductions', true ),
+			'email_renders'    => (int) $order->get_meta( '_epay_test_email_renders', true ),
+			'paid_at'          => $order->get_date_paid() ? $order->get_date_paid()->getTimestamp() : null,
+		),
 		'epay'              => array(
 			'merchant_reference'         => (string) $order->get_meta( '_epay_merchant_reference', true ),
 			'ticket_rows'                => epay_test_ticket_row_count( $order->get_id() ),
@@ -201,6 +209,7 @@ function epay_test_describe_order( $order ) {
 			'settled_reference'          => (string) $order->get_meta( '_epay_follow_up_settled_reference', true ),
 			'payment_complete_count'     => (int) $order->get_meta( '_epay_test_payment_complete_count', true ),
 			'result_code'                => (string) $order->get_meta( '_epay_result_code', true ),
+			'response_code'              => (string) $order->get_meta( '_epay_response_code', true ),
 			'payment_method'             => (string) $order->get_meta( '_epay_payment_method', true ),
 			'follow_up'                  => epay_test_ticket_follow_up( $order->get_id() ),
 			'stock_release_scheduled'    => false !== wp_next_scheduled( 'epay_paycenter_release_stock', array( $order->get_id() ) ),
@@ -301,6 +310,12 @@ function epay_test_read_order( $request ) {
 		: new WP_Error( 'epay_test_order_not_found', 'Order not found.', array( 'status' => 404 ) );
 }
 
+/** Exercise the gateway's existing-order payment entrypoint before a new receipt. */
+function epay_test_resume_payment( $request ) {
+	$gateways = WC()->payment_gateways()->payment_gateways();
+	return $gateways['epay_paycenter']->process_payment( (int) $request['id'] );
+}
+
 function epay_test_cancel_unpaid_order( $request ) {
 	global $wpdb;
 
@@ -387,7 +402,7 @@ function epay_test_set_fake_waf_result( $request ) {
 }
 
 function epay_test_set_fake_follow_up( $request ) {
-	$allowed_scenarios = array( 'paid', 'paid_unknown', 'pending', 'declined', 'not_found', 'identity_mismatch', 'incomplete_paid', 'transport_error', 'failure_09_iris', 'failure_09_unknown', 'failure_09_card' );
+	$allowed_scenarios = array( 'paid', 'paid_unknown', 'pending', 'declined', 'not_found', 'identity_mismatch', 'incomplete_paid', 'transport_error', 'failure_09_iris', 'failure_09_unknown', 'failure_09_card', 'failure_empty', 'failure_missing', 'failure_whitespace', 'failure_empty_card' );
 	$allowed_channels  = array( 'eCommerce', '3DSecure' );
 	$scenario          = sanitize_key( (string) $request->get_param( 'scenario' ) );
 	$channel           = sanitize_text_field( (string) $request->get_param( 'channel' ) );
@@ -490,6 +505,21 @@ add_action(
 	}
 );
 
+/** Observe normal WooCommerce effects; the safety fixture still suppresses mail delivery. */
+function epay_test_count_order_effect( $order, $key ) {
+	if ( $order instanceof WC_Order ) {
+		$observed = wc_get_order( $order->get_id() );
+		$observed->update_meta_data( $key, (int) $observed->get_meta( $key, true ) + 1 );
+		$observed->save_meta_data();
+	}
+}
+add_action( 'woocommerce_reduce_order_stock', static function ( $order ) {
+	epay_test_count_order_effect( $order, '_epay_test_stock_reductions' );
+} );
+add_action( 'woocommerce_email_before_order_table', static function ( $order ) {
+	epay_test_count_order_effect( $order, '_epay_test_email_renders' );
+} );
+
 function epay_test_run_follow_up( $request ) {
 	if ( ! class_exists( 'Epay_Paycenter_Reconciliation' )
 		|| ! method_exists( 'Epay_Paycenter_Reconciliation', 'reconcile_order' ) ) {
@@ -513,12 +543,13 @@ function epay_test_overlap_follow_up( $request ) {
 	$order_id = (int) $request['id'];
 	$reference = (string) $request->get_param( 'reference' );
 	$callback = (array) $request->get_param( 'callback' );
+	$scenario = 'failure_empty' === $request->get_param( 'scenario' ) ? 'failure_empty' : 'declined';
 	$wpdb->update( $wpdb->prefix . 'epay_paycenter_tickets',
 		array( 'next_check_at' => gmdate( 'Y-m-d H:i:s', time() + 600 ) ), array( 'order_id' => $order_id ) );
 	$wpdb->update( $wpdb->prefix . 'epay_paycenter_tickets',
 		array( 'next_check_at' => '2000-01-01 00:00:00' ), array( 'order_id' => $order_id, 'merchant_reference' => $reference ) );
 	$delivered = false;
-	$barrier = static function ( $preempt, $args, $url ) use ( $reference, $callback, &$delivered ) {
+	$barrier = static function ( $preempt, $args, $url ) use ( $reference, $callback, $scenario, &$delivered ) {
 		if ( EPAY_TEST_FOLLOW_UP_ENDPOINT !== $url || $delivered ) {
 			return $preempt;
 		}
@@ -534,7 +565,7 @@ function epay_test_overlap_follow_up( $request ) {
 			throw new RuntimeException( 'The synthetic overlapping callback did not finish.' );
 		}
 		$delivered = true;
-		return epay_test_fake_follow_up_response( $fields, 'declined' );
+		return epay_test_fake_follow_up_response( $fields, $scenario );
 	};
 	add_filter( 'pre_http_request', $barrier, 20, 3 );
 	try {
@@ -634,6 +665,44 @@ function epay_test_seed_closed_09( $request ) {
 	return epay_test_describe_order( $order );
 }
 
+/** Recreate selected prior-version results without running the upgrade yet. */
+function epay_test_seed_closed_failure( $request ) {
+	global $wpdb;
+	$order = wc_get_order( (int) $request['id'] );
+	if ( ! $order instanceof WC_Order ) {
+		return new WP_Error( 'missing_order', 'Synthetic order not found.', array( 'status' => 404 ) );
+	}
+	$status = (string) $request->get_param( 'order_status' );
+	if ( in_array( $status, array( 'failed', 'cancelled', 'processing', 'completed' ), true ) ) {
+		$order->update_status( $status, 'TST prior-version payment state.' );
+	}
+	$where = array( 'order_id' => $order->get_id() );
+	if ( $request->get_param( 'reference' ) ) {
+		$where['merchant_reference'] = (string) $request->get_param( 'reference' );
+	}
+	$wpdb->update( $wpdb->prefix . 'epay_paycenter_tickets', array(
+		'status' => 'failed', 'follow_up_state' => 'declined',
+		'follow_up_attempts' => (int) ( $request->get_param( 'attempts' ) ?? 1 ),
+		'follow_up_result_code' => '0', 'follow_up_status_flag' => 'Failure',
+		'follow_up_response_code' => (string) ( $request->get_param( 'code' ) ?? '' ),
+		'follow_up_payment_method' => '',
+		'resolution_source' => (string) ( $request->get_param( 'source' ) ?? 'follow_up' ),
+		'created_at' => gmdate( 'Y-m-d H:i:s', time() - (int) ( $request->get_param( 'age_seconds' ) ?? 3600 ) ),
+		'last_checked_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ),
+		'resolved_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ), 'next_check_at' => null,
+	), $where );
+	return epay_test_describe_order( wc_get_order( $order->get_id() ) );
+}
+
+function epay_test_recovery_upgrade( $request ) {
+	$version = $request->get_param( 'version' );
+	if ( in_array( $version, array( '2.0', '2.1', '2.2', '2.3', '99.0' ), true ) ) {
+		update_option( 'epay_paycenter_db_version', $version, false );
+	}
+	Epay_Paycenter_Plugin::on_activate();
+	return array( 'db_version' => get_option( 'epay_paycenter_db_version' ) );
+}
+
 function epay_test_age_attempt( $request ) {
 	global $wpdb;
 	$age = null === $request->get_param( 'age_seconds' ) ? 3 * DAY_IN_SECONDS : absint( $request->get_param( 'age_seconds' ) );
@@ -693,8 +762,16 @@ function epay_test_mark_order_locally_paid( $request ) {
 	if ( empty( $references ) ) {
 		return new WP_Error( 'epay_test_attempt_not_found', 'Issued payment attempt not found.', array( 'status' => 400 ) );
 	}
-	$order->update_meta_data( '_epay_merchant_reference', (string) $references[0] );
-	$order->payment_complete( '123456789' );
+	if ( $request->get_param( 'legacy_callback' ) ) {
+		// Older paid orders can predate the canonical FOLLOW_UP reference marker.
+		$order->delete_meta_data( '_epay_follow_up_settled_reference' );
+	} else {
+		$order->update_meta_data( '_epay_merchant_reference', (string) $references[0] );
+		$order->payment_complete( '123456789' );
+	}
+	if ( 'completed' === $request->get_param( 'status' ) ) {
+		$order->set_status( 'completed' );
+	}
 	$order->save();
 	return array( 'order' => epay_test_describe_order( wc_get_order( $order->get_id() ) ) );
 }
@@ -954,6 +1031,9 @@ add_action(
 		register_rest_route( 'epay-test/v1', '/follow-up/isolate-queue', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_isolate_follow_up_queue' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/prioritise/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_prioritise_follow_up' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/seed-closed-09/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_seed_closed_09' ) );
+		register_rest_route( 'epay-test/v1', '/follow-up/seed-closed-failure/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_seed_closed_failure' ) );
+		register_rest_route( 'epay-test/v1', '/resume-payment/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_resume_payment' ) );
+		register_rest_route( 'epay-test/v1', '/follow-up/recovery-upgrade', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_recovery_upgrade' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/age-attempt/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_age_attempt' ) );
 		register_rest_route( 'epay-test/v1', '/follow-up/drop-stock-event/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_drop_stock_event' ) );
 		register_rest_route( 'epay-test/v1', '/trash-order/(?P<id>\d+)', array( 'methods' => 'POST', 'permission_callback' => $permission, 'callback' => 'epay_test_trash_order' ) );

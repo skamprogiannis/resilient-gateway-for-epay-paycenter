@@ -316,6 +316,13 @@ final class Epay_Paycenter_Follow_Up {
 			return $result;
 		}
 
+		// An incomplete failure cannot establish a final bank decline.
+		if ( 'Failure' === $status_flag && '' === $response_code ) {
+			$result['state'] = 'query_error';
+			$result['error'] = 'Paycenter returned Failure without a ResponseCode; the bank outcome is unconfirmed.';
+			return $result;
+		}
+
 		// IRIS 09 can precede the final bank result even with a Failure flag.
 		// Missing method information must not turn that ambiguity into a decline.
 		$card_decline    = 'card' === strtolower( $result['payment_method'] )

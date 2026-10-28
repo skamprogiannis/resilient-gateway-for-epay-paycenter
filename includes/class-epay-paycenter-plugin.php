@@ -89,7 +89,7 @@ final class Epay_Paycenter_Plugin {
 	 * Current schema and data-migration version. This is intentionally
 	 * independent from the public plugin version.
 	 */
-	const DB_VERSION = '2.2';
+	const DB_VERSION = '2.3';
 
 	/**
 	 * Normalize callbacks whose gateway path is repeated by the bank portal.
@@ -411,7 +411,30 @@ final class Epay_Paycenter_Plugin {
 		if ( ! self::reopen_ambiguous_follow_up() ) {
 			return;
 		}
+		if ( ! self::reopen_incomplete_follow_up() ) {
+			return;
+		}
 		update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
+	}
+
+	/** Queue incomplete declines for independent bank verification, retaining their evidence. */
+	private static function reopen_incomplete_follow_up(): bool {
+		global $wpdb;
+		// The conditional update cannot reopen a callback-resolved attempt, and
+		// its marker makes retries safe if the migration version cannot be saved.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE %i SET follow_up_state = 'pending', resolved_at = NULL,
+				 next_check_at = %s, resolution_source = 'follow_up_recheck'
+				 WHERE follow_up_state = 'declined' AND resolution_source = 'follow_up'
+				 AND follow_up_result_code = '0' AND follow_up_status_flag = 'Failure'
+				 AND follow_up_response_code REGEXP '^[[:space:]]*$'",
+				$wpdb->prefix . 'epay_paycenter_tickets',
+				gmdate( 'Y-m-d H:i:s' )
+			)
+		);
+		return false !== $result;
 	}
 
 	/** Recheck premature FOLLOW_UP declines without changing any order or bank result. */

@@ -205,7 +205,8 @@ abandoned payment or the response was lost. Staff must verify the
 MerchantReference in the ePay AdminTool.
 
 After an administrator verifies and enables `FOLLOW_UP`, the plugin performs
-bounded checks for up to 48 hours. Only an exact approved bank result calls
+bounded checks within the configured recovery window (48 hours by default).
+Only an exact approved bank result calls
 WooCommerce's normal `payment_complete()` path. Late, detached, unresolved,
 locally unpersisted, or possibly duplicated payments produce a review case.
 WooCommerce → ePay reviews separates payment discrepancies, technical check
@@ -214,11 +215,26 @@ or MerchantReference; the Orders navigation links to the unreviewed case count.
 Recovery status and the last worker run are available on the review page and
 gateway settings. An empty queue does not prove that every payment was checked.
 
+A FOLLOW_UP `Failure` without a response code is incomplete, not a confirmed
+decline. It remains retryable and eventually becomes an unconfirmed review
+case if no final result arrives. The update requeues matching attempts closed
+by earlier versions, including attempts on Processing or Completed orders.
+Requeueing alone does not change an order's status or restart its recovery
+window. Old attempts receive a fresh lookup; technical errors use the existing
+bounded fallback based on the accumulated check count.
+
+These checks preserve an existing payment's reference and transaction details.
+A different confirmed reference raises a possible-duplicate-payment warning.
+For a manually processed order with no bank evidence, a verified approval adds
+the payment evidence without repeating payment completion, stock reduction,
+or customer emails. Incomplete results never establish payment or nonpayment.
+
 Mark reviewed saves an acknowledgement without reloading the page or changing
 payment, stock, recovery, or order data. Bulk review is limited to explicitly
 selected unconfirmed and historical cases. Discrepancies and technical problems
 require individual review. Saved cases remain in Reviewed cases. The review
 page also supports normal form submission when JavaScript is unavailable.
+An existing staff acknowledgement remains preserved if the same case is rechecked.
 
 Each order's ePay payment panel shows its latest attempt, expandable earlier
 references, and locally recorded bank evidence. Copy reference works without
@@ -271,6 +287,9 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 = Unreleased =
 
+* Keep incomplete bank failures retryable and send unresolved checks to payment review.
+* Requeue matching historical declines for fresh bank verification when recovery is enabled, retaining their original evidence and retry limits.
+* Verify these attempts independently on already-paid orders without replacing payment metadata or repeating payment effects; flag a different confirmed payment for review.
 * Confirm a persisted recovery worker before reporting a concurrent scheduling failure, even with stale caches. Genuine database errors and scheduler vetoes remain visible.
 
 = 2.2.1 =

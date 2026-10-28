@@ -615,7 +615,7 @@ test('@callback legacy plaintext credentials migrate once without changing bank 
 
     const migrated = await setFixture(request, 'credential-migration', { action: 'upgrade' });
     expect(migrated).toEqual({
-      db_version: '2.2',
+      db_version: '2.3',
       stored_password: `md5:${digest}`,
       password_digest: digest,
     });
@@ -1417,6 +1417,262 @@ test('@followup treats result 1010 as inconclusive and can recover on a later ch
   expect(recovered.order.epay.ticket_statuses).toEqual({
     [attempt.MerchantReference]: 'succeeded',
   });
+});
+
+for (const scenario of ['failure_empty', 'failure_missing', 'failure_whitespace', 'failure_empty_card']) {
+  test(`@followup @incomplete-failure ${scenario} keeps the second attempt retryable until bank approval`, async ({ request }) => {
+    const order = await createOrder(request);
+    const first = await issueAttempt(request, order);
+    await verifyAndEnableFollowUp(request, order);
+    await setFixture(request, 'fake-follow-up', { scenario: 'declined' });
+    expect((await setFixture(request, `follow-up/run/${order.order_id}`, {})).order.status).toBe('failed');
+
+    expect((await setFixture(request, `resume-payment/${order.order_id}`, {})).result).toBe('success');
+    const second = await issueAttempt(request, order);
+    await setFixture(request, 'fake-follow-up', { scenario });
+    const waiting = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+    expect(waiting.order.status).toBe('pending');
+    expect(waiting.result).toMatchObject({ paid: 0, declined: 0, query_errors: 1 });
+    expect(waiting.order.epay.follow_up[second.MerchantReference]).toMatchObject({
+      state: 'query_error', status_flag: 'Failure', response_code: '', attempts: 1, resolved_at: null,
+    });
+    expect(waiting.order.epay.follow_up[second.MerchantReference].next_check_at).not.toBeNull();
+    expect(waiting.order.epay.follow_up[first.MerchantReference].state).toBe('declined');
+
+    await setFixture(request, 'fake-follow-up', { scenario: 'paid' });
+    const recovered = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+    expect(recovered.order.order_id).toBe(order.order_id);
+    expect(recovered.order.epay.ticket_rows).toBe(2);
+    expect(['processing', 'completed']).toContain(recovered.order.status);
+    expect(recovered.order.epay.follow_up[second.MerchantReference].state).toBe('paid');
+    expect(recovered.order.epay.payment_complete_count).toBe(1);
+    expect((await setFixture(request, `follow-up/run/${order.order_id}`, {})).order.epay.payment_complete_count).toBe(1);
+  });
+}
+
+test('@followup @incomplete-failure retains independent checking through transport and local settlement failures', async ({ request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  for (const scenario of ['failure_empty', 'transport_error']) {
+    await setFixture(request, 'fake-follow-up', { scenario });
+    const checked = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+    expect(checked.order.status).toBe('pending');
+    expect(checked.order.epay.follow_up[attempt.MerchantReference]).toMatchObject({
+      state: 'query_error', source: 'follow_up_recheck', resolved_at: null,
+    });
+  }
+  await setFixture(request, 'fake-follow-up', { scenario: 'paid' });
+  await setFixture(request, 'follow-up/fail-next-payment-complete', {});
+  const interrupted = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+  expect(interrupted.order.epay.follow_up[attempt.MerchantReference]).toMatchObject({
+    state: 'paid_unsettled', source: 'follow_up_recheck',
+  });
+  await setFixture(request, 'fake-follow-up', { scenario: 'transport_error' });
+  const recovered = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+  expect(recovered.requests).toEqual([]);
+  expect(recovered.order.epay.follow_up[attempt.MerchantReference]).toMatchObject({ state: 'paid', source: 'follow_up' });
+  expect(recovered.order.epay.payment_complete_count).toBe(1);
+});
+
+for (const status of ['processing', 'completed']) {
+  for (const sameReference of [false, true]) {
+    test(`@followup @incomplete-failure rechecks a ${status} order with ${sameReference ? 'the same' : 'another'} legacy paid reference`, async ({ request }) => {
+      const order = await createOrder(request);
+      const first = await issueAttempt(request, order);
+      const second = await issueAttempt(request, order);
+      await issueAttempt(request, order); // Ordinary backfill still uses local provenance.
+      await verifyAndEnableFollowUp(request, order);
+      if (status === 'completed') {
+        await sendCallback(request, CANONICAL_CALLBACK, callbackPayload(order.order_id, first.MerchantReference));
+      }
+      const paid = (await setFixture(request, `mark-local-paid/${order.order_id}`, {
+        status, legacy_callback: status === 'completed',
+      })).order;
+      const target = sameReference ? first : second;
+      await setFixture(request, `follow-up/seed-closed-failure/${order.order_id}`, { reference: target.MerchantReference });
+      await setFixture(request, 'follow-up/recovery-upgrade', { version: '2.2' });
+      await setFixture(request, 'fake-follow-up', { scenario: 'transport_error' });
+      const waiting = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+      expect(waiting.requests).toMatchObject([{ reference: target.MerchantReference }]);
+      expect(waiting.requests).toHaveLength(1);
+      expect(waiting.order.epay.follow_up[target.MerchantReference]).toMatchObject({ state: 'query_error', source: 'follow_up_recheck' });
+
+      await setFixture(request, 'fake-follow-up', { scenario: 'paid' });
+      const checked = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+      expect(checked.requests).toHaveLength(1);
+      expect(checked.order.status).toBe(status);
+      expect(checked.order.effects).toEqual(paid.effects);
+      expect(checked.order.epay).toMatchObject({
+        merchant_reference: paid.epay.merchant_reference,
+        settled_reference: paid.epay.settled_reference,
+        transaction_id: paid.epay.transaction_id,
+        callback_transaction_id: paid.epay.callback_transaction_id,
+        response_code: paid.epay.response_code,
+        payment_complete_count: paid.epay.payment_complete_count,
+        follow_up_multiple_payments: !sameReference,
+      });
+      expect(checked.order.epay.follow_up[target.MerchantReference]).toMatchObject({ state: 'paid', source: 'follow_up' });
+      const repeated = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+      expect(repeated.result.paid).toBe(0);
+      expect(repeated.order.epay).toEqual(checked.order.epay);
+    });
+  }
+}
+
+test('@followup @incomplete-failure upgrade requeues only incomplete follow-up declines and preserves their history', async ({ request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  const before = await setFixture(request, `follow-up/seed-closed-failure/${order.order_id}`, {
+    order_status: 'failed', age_seconds: 7 * 86400,
+  });
+  const controls = [];
+  for (const params of [{ code: '05' }, { code: '', source: 'callback' }]) {
+    const control = await createOrder(request);
+    await issueAttempt(request, control);
+    controls.push(await setFixture(request, `follow-up/seed-closed-failure/${control.order_id}`, params));
+  }
+  const upgraded = await setFixture(request, 'follow-up/recovery-upgrade', { version: '2.2' });
+  expect(upgraded.db_version).toBe('2.3');
+  const queued = await readOrder(request, order.order_id);
+  const row = queued.epay.follow_up[attempt.MerchantReference];
+  expect(queued.status).toBe('failed');
+  expect(queued.epay.ticket_statuses).toEqual(before.epay.ticket_statuses);
+  expect(row).toMatchObject({
+    state: 'pending', source: 'follow_up_recheck', resolved_at: null, attempts: 1,
+    status_flag: 'Failure', response_code: '',
+    created_at: before.epay.follow_up[attempt.MerchantReference].created_at,
+    last_checked_at: before.epay.follow_up[attempt.MerchantReference].last_checked_at,
+  });
+  expect(row.next_check_at).not.toBeNull();
+  await setFixture(request, 'follow-up/recovery-upgrade', { version: '2.2' });
+  expect((await readOrder(request, order.order_id)).epay).toEqual(queued.epay);
+  for (const control of controls) expect(await readOrder(request, control.order_id)).toEqual(control);
+
+  await setFixture(request, 'fake-follow-up', { scenario: 'paid' });
+  const recovered = await runWindowWorker(request, order);
+  expect(recovered.epay.follow_up[attempt.MerchantReference]).toMatchObject({ state: 'paid', source: 'follow_up', attempts: 2 });
+  expect(recovered.epay.follow_up_late_payment).toBe(true);
+});
+
+test('@followup @incomplete-failure migration failure is retried and skipped-version upgrades accept whitespace failures', async ({ request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await setFixture(request, `follow-up/seed-closed-failure/${order.order_id}`, { code: ' \t\n ', order_status: 'cancelled' });
+  const response = await request.post('/wp-json/epay-test/v1/follow-up/recovery-upgrade', {
+    data: { version: '2.0' }, headers: { 'X-Epay-Test-Recovery-Scenario': 'recheck-migration-error' },
+  });
+  expect(response.ok()).toBe(true);
+  expect((await response.json()).db_version).toBe('2.0');
+  expect((await setFixture(request, 'follow-up/recovery-upgrade', {})).db_version).toBe('2.3');
+  const queued = await readOrder(request, order.order_id);
+  expect(queued.status).toBe('cancelled');
+  expect(queued.epay.follow_up[attempt.MerchantReference]).toMatchObject({ state: 'pending', source: 'follow_up_recheck', response_code: ' \t\n ' });
+  // An upgrade never enables recovery or bypasses channel verification.
+  await setFixture(request, 'follow-up/reset', {});
+  await setFixture(request, 'follow-up/isolate-queue', { order_ids: [order.order_id] });
+  const before = await readOrder(request, order.order_id);
+  await setFixture(request, 'follow-up/worker', {});
+  expect(await readOrder(request, order.order_id)).toEqual(before);
+});
+
+test('@followup @incomplete-failure manually processing an order does not repeat payment effects on verified recovery', async ({ request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, `follow-up/seed-closed-failure/${order.order_id}`, { order_status: 'failed' });
+  await setFixture(request, `mark-processing/${order.order_id}`, {});
+  const before = await readOrder(request, order.order_id);
+  expect(before.epay.has_transaction_id).toBe(false);
+  await setFixture(request, 'follow-up/recovery-upgrade', { version: '2.2' });
+  await setFixture(request, 'fake-follow-up', { scenario: 'paid' });
+  const checked = await runWindowWorker(request, order);
+  expect(checked.status).toBe('processing');
+  expect(checked.effects).toEqual(before.effects);
+  expect(checked.epay.payment_complete_count).toBe(0);
+  expect(checked.epay.follow_up[attempt.MerchantReference]).toMatchObject({ state: 'paid', source: 'follow_up' });
+  expect(checked.epay.settled_reference).toBe(attempt.MerchantReference);
+  expect(checked.epay.has_transaction_id).toBe(true);
+});
+
+test('@followup @incomplete-failure @payment-race a callback resolving a queued recheck wins over the in-flight lookup', async ({ request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, `follow-up/seed-closed-failure/${order.order_id}`, {});
+  await setFixture(request, 'follow-up/recovery-upgrade', { version: '2.2' });
+  const payment = callbackPayload(order.order_id, attempt.MerchantReference);
+  const checked = await setFixture(request, `follow-up/overlap/${order.order_id}`, {
+    reference: attempt.MerchantReference, callback: payment,
+  });
+  expect(checked.callback_delivered).toBe(true);
+  const paid = await readOrder(request, order.order_id);
+  expect(paid.epay.follow_up[attempt.MerchantReference]).toMatchObject({ state: 'paid', source: 'callback' });
+  expect(paid.epay.transaction_id).toBe(payment.TransactionId);
+  expect(paid.epay.payment_complete_count).toBe(1);
+});
+
+test('@followup @incomplete-failure @review incomplete results exhaust bounded checks visibly and preserve staff acknowledgements', async ({ page, request }) => {
+  const order = await createOrder(request);
+  const attempt = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, 'fake-follow-up', { scenario: 'failure_empty' });
+  await setFixture(request, `follow-up/run/${order.order_id}`, {});
+  await loginAsLocalAdmin(page);
+  await page.goto(`/wp-admin/post.php?post=${order.order_id}&action=edit`);
+  const panel = page.locator('#epay-order-payment');
+  await expect(panel).toContainText('Check problem');
+  await expect(panel).not.toContainText('Bank declined payment');
+  await setFixture(request, `follow-up/age-attempt/${order.order_id}`, { age_seconds: 49 * 3600 });
+  const retry = await runWindowWorker(request, order);
+  expect(retry.epay.follow_up[attempt.MerchantReference]).toMatchObject({ state: 'query_error', attempts: 2, resolved_at: null });
+  const exhausted = await runWindowWorker(request, order);
+  expect(exhausted.epay.follow_up[attempt.MerchantReference]).toMatchObject({ state: 'unresolved', attempts: 3, source: 'timeout', next_check_at: null });
+  expect(exhausted.status).not.toBe('failed');
+  await page.goto(REVIEW_PAGE);
+  const row = page.locator('.epay-review-row').filter({ hasText: attempt.MerchantReference });
+  await expect(row).toContainText('No final bank result');
+  await row.getByRole('button', { name: 'Mark reviewed', exact: true }).click();
+  await expect(row).toHaveCount(0);
+  const report = await (await request.get('/wp-json/epay-test/v1/review-cases')).json();
+  const acknowledgement = Object.values(report.items).find(item => item.reference === attempt.MerchantReference);
+  expect(acknowledgement.reviewed_at).not.toBe('');
+
+  // A pre-existing acknowledgement survives a historical recheck of this case.
+  await setFixture(request, `follow-up/seed-closed-failure/${order.order_id}`, { attempts: 3, age_seconds: 7 * 86400 });
+  await setFixture(request, 'follow-up/recovery-upgrade', { version: '2.2' });
+  const historical = await runWindowWorker(request, order);
+  expect(historical.epay.follow_up[attempt.MerchantReference]).toMatchObject({ state: 'unresolved', attempts: 4, source: 'timeout' });
+  const after = await (await request.get('/wp-json/epay-test/v1/review-cases')).json();
+  expect(Object.values(after.items).find(item => item.reference === attempt.MerchantReference)).toEqual(acknowledgement);
+  await page.goto(`${REVIEW_PAGE}&review_group=reviewed`);
+  await expect(row).toContainText('Reviewed (UTC)');
+});
+
+test('@followup @incomplete-failure @payment-race a sibling callback preserves the marked target and canonical payment', async ({ request }) => {
+  const order = await createOrder(request);
+  const first = await issueAttempt(request, order);
+  const target = await issueAttempt(request, order);
+  await verifyAndEnableFollowUp(request, order);
+  await setFixture(request, `follow-up/seed-closed-failure/${order.order_id}`, { reference: target.MerchantReference });
+  await setFixture(request, 'follow-up/recovery-upgrade', { version: '2.2' });
+  const payment = callbackPayload(order.order_id, first.MerchantReference);
+  const overlap = await setFixture(request, `follow-up/overlap/${order.order_id}`, {
+    reference: target.MerchantReference, callback: payment, scenario: 'failure_empty',
+  });
+  expect(overlap.callback_delivered).toBe(true);
+  const waiting = await readOrder(request, order.order_id);
+  expect(waiting.epay.follow_up[target.MerchantReference]).toMatchObject({ state: 'query_error', source: 'follow_up_recheck' });
+  expect(waiting.epay.transaction_id).toBe(payment.TransactionId);
+  await setFixture(request, 'fake-follow-up', { scenario: 'paid' });
+  const checked = await setFixture(request, `follow-up/run/${order.order_id}`, {});
+  expect(checked.order.epay).toMatchObject({
+    merchant_reference: first.MerchantReference, settled_reference: first.MerchantReference,
+    transaction_id: payment.TransactionId, callback_transaction_id: payment.TransactionId,
+    follow_up_multiple_payments: true, payment_complete_count: 1,
+  });
+  expect(checked.order.effects).toEqual(waiting.effects);
 });
 
 for (const method of ['iris', 'unknown', 'card']) {

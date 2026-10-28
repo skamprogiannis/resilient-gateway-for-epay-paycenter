@@ -68,6 +68,12 @@ before a new receipt replaces its reference.
 On 2026-10-05 the fork contributors verified fresh persisted cron state before
 reporting concurrent recovery scheduling failures, retaining real error reports.
 
+On 2026-10-28 the fork contributors kept incomplete FOLLOW_UP failures
+retryable and added targeted historical rechecks. These checks preserve existing
+payment evidence and staff acknowledgements while detecting additional confirmed
+payments. Retry windows, stock holds and callback authentication remain bounded
+by the existing recovery policy.
+
 ## Trademarks and services
 
 “ePay”, “Paycenter”, and “Piraeus Bank” are trademarks of Piraeus Bank S.A.

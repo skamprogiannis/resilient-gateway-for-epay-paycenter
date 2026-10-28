@@ -3,8 +3,18 @@
 Notable changes to Resilient Gateway for ePay Paycenter are recorded here.
 Release artifacts and checksums belong in GitHub Releases.
 
-## Unreleased — 2026-10-05
+## Unreleased — 2026-10-28
 
+- Keep FOLLOW_UP failures with missing or blank response codes retryable,
+  then require review if the bounded recovery checks remain inconclusive.
+- Requeue only matching premature declines on upgrade, retaining their bank
+  evidence, original dates, and accumulated check counts. Recovery remains opt-in.
+- Independently verify these attempts on already-paid orders, preserve the
+  original payment metadata, and flag a different confirmed payment for review.
+  Verified recovery of a manually processed order does not replay payment effects.
+- Qualify incomplete failures, historical upgrades, review acknowledgements,
+  duplicate payments and callback races with synthetic transport in both order
+  storage modes.
 - Verify the persisted reconciliation worker after a concurrent cron write
   reports `could_not_set` or `duplicate_event`, bypassing stale option caches.
   Preserve genuine database failures and scheduler vetoes in diagnostics.

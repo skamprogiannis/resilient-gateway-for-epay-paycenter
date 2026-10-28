@@ -14,11 +14,13 @@ defined( 'ABSPATH' ) || exit;
  *
  * @phpstan-import-type FollowUpResult from Epay_Paycenter_Follow_Up
  * @phpstan-type RunSummary array{paid:int, declined:int, pending:int, query_errors:int, local_paid:int, unresolved:int, double_payments:int, settlement_errors:int, lock_skipped:int}
- * @phpstan-type TicketRow array{id:int, order_id:int, merchant_reference:string, created_at:string, follow_up_attempts:int, follow_up_state:string, follow_up_result_code:string, follow_up_response_code:string, follow_up_status_flag:string, follow_up_support_reference_id:string, follow_up_transaction_id:string, follow_up_transaction_at:string, follow_up_payment_method:string, follow_up_iris_transaction_id:string, follow_up_iris_status:string}
+ * @phpstan-type TicketRow array{id:int, order_id:int, merchant_reference:string, created_at:string, follow_up_attempts:int, follow_up_state:string, resolution_source:string, follow_up_result_code:string, follow_up_response_code:string, follow_up_status_flag:string, follow_up_support_reference_id:string, follow_up_transaction_id:string, follow_up_transaction_at:string, follow_up_payment_method:string, follow_up_iris_transaction_id:string, follow_up_iris_status:string}
  * @phpstan-type ChannelTestResult array{success:bool, message:string, channel?:string, status_label?:string, tested_channels?:list<string>, response_code?:string, payment_method?:string, transaction_at?:string}
  * @phpstan-type RecoveryStatus array{enabled:bool, verified:bool, awaiting:int|null, overdue:bool, scheduled:bool, last_run:array{completed_at:int, errors:int}|null}
  */
 final class Epay_Paycenter_Reconciliation {
+
+	private const RECHECK_SOURCE = 'follow_up_recheck';
 
 	const CRON_HOOK              = 'epay_paycenter_reconcile';
 	const STOCK_RELEASE_HOOK     = 'epay_paycenter_release_stock';
@@ -558,9 +560,12 @@ final class Epay_Paycenter_Reconciliation {
 				&& ( $order->is_paid() || $order->has_status( array( 'pending', 'on-hold', 'failed', 'cancelled' ) ) );
 			if ( $can_mutate && self::has_local_payment_provenance( $order )
 				&& '' === (string) $order->get_meta( '_epay_follow_up_settled_reference', true ) ) {
-				self::mark_locally_paid( $order, $rows );
-				$summary['local_paid'] = count( $rows );
-				return $summary;
+				$rechecks               = self::classify_ordinary_local_rows( $order, $rows );
+				$summary['local_paid'] += count( $rows ) - count( $rechecks );
+				$rows                   = $rechecks;
+				if ( empty( $rows ) ) {
+					return $summary;
+				}
 			}
 			Epay_Paycenter_Order_Lock::release( $order_id );
 			$payment_locked = false;
@@ -624,11 +629,16 @@ final class Epay_Paycenter_Reconciliation {
 
 			// A Processing/Completed status alone may have been set manually.
 			// Historical local classification requires payment-specific evidence.
+			$legacy_reference = '';
 			if ( self::has_local_payment_provenance( $order )
 				&& '' === (string) $order->get_meta( '_epay_follow_up_settled_reference', true ) ) {
-				self::mark_locally_paid( $order, $rows );
-				$summary['local_paid'] = count( $rows );
-				return $summary;
+				$legacy_reference       = (string) $order->get_meta( '_epay_merchant_reference', true );
+				$rechecks               = self::classify_ordinary_local_rows( $order, $rows );
+				$summary['local_paid'] += count( $rows ) - count( $rechecks );
+				$rows                   = $rechecks;
+				if ( empty( $rows ) ) {
+					return $summary;
+				}
 			}
 
 			$paid_results = array();
@@ -673,7 +683,7 @@ final class Epay_Paycenter_Reconciliation {
 					$summary['unresolved'] = self::unresolved_count( $order_id );
 					return $summary;
 				}
-				if ( count( $paid_results ) > 1 || self::paid_attempt_count( $order_id ) > 1 ) {
+				if ( count( $paid_results ) > 1 || self::paid_attempt_count( $order_id, $legacy_reference ) > 1 ) {
 					$summary['double_payments'] = 1;
 					Epay_Paycenter_Review::record( 'double_paid', $order_id );
 				}
@@ -685,7 +695,8 @@ final class Epay_Paycenter_Reconciliation {
 				$settled_reference         = (string) $order->get_meta( '_epay_follow_up_settled_reference', true );
 				$retrying_local_settlement = 'paid_unsettled' === (string) $paid_results[0]['row']['follow_up_state']
 					&& $settled_reference === $paid_results[0]['reference'];
-				if ( ! $order->is_paid() || $retrying_local_settlement || '' === $settled_reference ) {
+				// Rechecks must not replace an existing legacy payment's metadata.
+				if ( '' === $legacy_reference && ( ! $order->is_paid() || $retrying_local_settlement || '' === $settled_reference ) ) {
 					$settled = self::settle_order( $order, $paid_results[0]['reference'], $paid_results[0]['result'] );
 					if ( ! $settled ) {
 						foreach ( $paid_results as $paid_result ) {
@@ -699,7 +710,7 @@ final class Epay_Paycenter_Reconciliation {
 				foreach ( $paid_results as $paid_result ) {
 					self::finalize_paid_result( $paid_result['row'] );
 				}
-				$paid_count = self::paid_attempt_count( $order_id );
+				$paid_count = self::paid_attempt_count( $order_id, $legacy_reference );
 				if ( $paid_count > 1 ) {
 					self::flag_multiple_payments( $order, $paid_count );
 					$summary['double_payments'] = 1;
@@ -751,7 +762,12 @@ final class Epay_Paycenter_Reconciliation {
 		$now         = time();
 		$next        = null;
 		$resolved_at = null;
-		$resolution  = '';
+		$resolution  = self::RECHECK_SOURCE === $row['resolution_source'] ? self::RECHECK_SOURCE : '';
+		if ( 'query_error' === $state && '0' === $result['result_code']
+			&& 'Failure' === $result['status_flag'] && '' === $result['response_code'] ) {
+			// Keep this obligation after later responses overwrite the original fields.
+			$resolution = self::RECHECK_SOURCE;
+		}
 
 		if ( in_array( $state, array( 'paid', 'declined' ), true ) ) {
 			$resolved_at = gmdate( 'Y-m-d H:i:s', $now );
@@ -830,7 +846,7 @@ final class Epay_Paycenter_Reconciliation {
 			'follow_up_payment_method'       => (string) $result['payment_method'],
 			'follow_up_iris_transaction_id'  => (string) $result['iris_transaction_id'],
 			'follow_up_iris_status'          => (string) $result['iris_status'],
-			'resolution_source'              => 'follow_up',
+			'resolution_source'              => self::RECHECK_SOURCE === $row['resolution_source'] ? self::RECHECK_SOURCE : 'follow_up',
 			'resolved_at'                    => null,
 			'updated_at'                     => gmdate( 'Y-m-d H:i:s', $now ),
 		);
@@ -984,6 +1000,30 @@ final class Epay_Paycenter_Reconciliation {
 			);
 			return false;
 		}
+	}
+
+	/**
+	 * Classify ordinary historical rows, retaining independently unconfirmed attempts.
+	 *
+	 * @param WC_Order $order Order with local payment provenance.
+	 * @param array    $rows Attempt rows.
+	 * @phpstan-param list<TicketRow> $rows
+	 * @phpstan-return list<TicketRow>
+	 */
+	private static function classify_ordinary_local_rows( WC_Order $order, array $rows ): array {
+		$ordinary = array();
+		$rechecks = array();
+		foreach ( $rows as $row ) {
+			if ( self::RECHECK_SOURCE === $row['resolution_source'] ) {
+				$rechecks[] = $row;
+			} else {
+				$ordinary[] = $row;
+			}
+		}
+		if ( ! empty( $ordinary ) ) {
+			self::mark_locally_paid( $order, $ordinary );
+		}
+		return $rechecks;
 	}
 
 	/**
@@ -1247,6 +1287,7 @@ final class Epay_Paycenter_Reconciliation {
 			'created_at'                     => self::row_string( $row, 'created_at' ),
 			'follow_up_attempts'             => self::row_integer( $row, 'follow_up_attempts' ),
 			'follow_up_state'                => self::row_string( $row, 'follow_up_state' ),
+			'resolution_source'              => self::row_string( $row, 'resolution_source' ),
 			'follow_up_result_code'          => self::row_string( $row, 'follow_up_result_code' ),
 			'follow_up_response_code'        => self::row_string( $row, 'follow_up_response_code' ),
 			'follow_up_status_flag'          => self::row_string( $row, 'follow_up_status_flag' ),
@@ -1371,19 +1412,23 @@ final class Epay_Paycenter_Reconciliation {
 	/**
 	 * Count bank-approved attempts, including approvals awaiting local settlement.
 	 *
-	 * @param int $order_id Order ID.
+	 * @param int    $order_id Order ID.
+	 * @param string $local_reference Legacy locally proven payment to count once.
 	 * @throws RuntimeException If the count query fails.
 	 * @return int
 	 */
-	private static function paid_attempt_count( int $order_id ) {
+	private static function paid_attempt_count( int $order_id, string $local_reference = '' ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'epay_paycenter_tickets';
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-		$count = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE order_id = %d AND follow_up_state IN ('paid','paid_unsettled')", $table, $order_id ) );
-		if ( null === $count ) {
+		$references = $wpdb->get_col( $wpdb->prepare( "SELECT merchant_reference FROM %i WHERE order_id = %d AND follow_up_state IN ('paid','paid_unsettled')", $table, $order_id ) );
+		if ( '' !== $wpdb->last_error || ! is_array( $references ) ) {
 			throw new RuntimeException( 'Could not count paid ePay attempts.' );
 		}
-		return (int) $count;
+		if ( '' !== $local_reference ) {
+			$references[] = $local_reference;
+		}
+		return count( array_unique( $references ) );
 	}
 
 	/**
