@@ -46,11 +46,11 @@ fixes. It preserves per-attempt order evidence, handles activation scheduling
 errors and pins CI dependencies. These are maintained-fork changes; the
 immutable upstream import remains unchanged.
 
-Unreleased maintenance (2026-10-05) confirms persisted recovery workers after
-concurrent scheduling errors, bypassing stale caches while preserving genuine
-failures. This correction belongs to the maintained fork.
+Maintenance included in release 2.2.2 (implemented 2026-10-05) confirms persisted
+recovery workers after concurrent scheduling errors, bypassing stale caches
+while preserving genuine failures. This correction belongs to the maintained fork.
 
-Unreleased maintenance (2026-10-28) corrects premature closure of incomplete
+Release 2.2.2 (2026-10-28) corrects premature closure of incomplete
 FOLLOW_UP failures and rechecks matching historical attempts. It preserves
 existing canonical payments while independently verifying those references,
 with bounded retries and staff review. These are maintained-fork changes.

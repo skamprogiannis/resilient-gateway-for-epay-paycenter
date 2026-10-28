@@ -4,7 +4,7 @@ Tags: woocommerce, payment gateway, epay, iris, greece
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.2.1
+Stable tag: 2.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -285,7 +285,7 @@ https://github.com/skamprogiannis/resilient-gateway-for-epay-paycenter/security/
 
 == Changelog ==
 
-= Unreleased =
+= 2.2.2 =
 
 * Keep incomplete bank failures retryable and send unresolved checks to payment review.
 * Requeue matching historical declines for fresh bank verification when recovery is enabled, retaining their original evidence and retry limits.

@@ -3,7 +3,7 @@
 Notable changes to Resilient Gateway for ePay Paycenter are recorded here.
 Release artifacts and checksums belong in GitHub Releases.
 
-## Unreleased — 2026-10-28
+## 2.2.2 — 2026-10-28
 
 - Keep FOLLOW_UP failures with missing or blank response codes retryable,
   then require review if the bounded recovery checks remain inconclusive.
